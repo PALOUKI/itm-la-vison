@@ -236,7 +236,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
               child: Text(
-                'Année ${data.childrenResponse.currentYear.name}',
+                'Année ${data.dashboardResponse.currentYear?.name ?? 'N/A'}',
 
                 style: TextStyle(
                   fontSize: 10.sp,

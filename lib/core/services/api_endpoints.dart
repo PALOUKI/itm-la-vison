@@ -47,7 +47,7 @@ class ApiEndpoints {
   static const String getPeriods = '/parent/periods';
   static const String getExams = '/parent/exams';
   static const String getBulletins = '/parent/bulletins';
-  static String getBulletin(String student, String period) => '/parent/children/$student/bulletins/$period';
+  static String getBulletin(String student, String period) => '/parent/children/$student/bulletins/$period/render';
   static String getMiniBulletin(String student, String exam) => '/parent/children/$student/mini-bulletins/$exam/render';
   static String getChildTeachers(String student) => '/parent/children/$student/teachers';
   static String getAttendances(String student) => '/parent/children/$student/attendances';

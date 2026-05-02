@@ -81,7 +81,6 @@ class MiniBulletinParams {
 
 /// Provider pour le contenu HTML du mini-bulletin (compositions)
 final miniBulletinHtmlProvider = FutureProvider.family<String, MiniBulletinParams>((ref, params) async {
-  ref.keepAlive();
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getMiniBulletinHtml(
     studentUuid: params.studentUuid,

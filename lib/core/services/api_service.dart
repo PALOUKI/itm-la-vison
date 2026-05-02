@@ -463,32 +463,17 @@ class ApiService {
       final response = await _dio.get(
         ApiEndpoints.getBulletin(studentUuid, periodId.toString()),
         options: Options(
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
         ),
       );
 
       if (response.statusCode == 200) {
-        // Check if the response indicates success or if bulletin is not available
-        if (response.data is Map<String, dynamic>) {
-          final data = response.data as Map<String, dynamic>;
-          if (data['success'] == false) {
-            throw Exception(data['message'] ?? 'Bulletin access not enabled');
-          }
-        }
         return response.data.toString();
       } else {
         throw Exception('Failed to fetch bulletin with status code ${response.statusCode}');
       }
     } on DioException catch (e) {
-      // Handle 403 Forbidden error (bulletin access not enabled)
-      if (e.response?.statusCode == 403) {
-        final data = e.response?.data;
-        if (data is Map<String, dynamic>) {
-          throw Exception(data['message'] ?? 'Bulletin access not enabled');
-        }
-        throw Exception('Bulletin access not enabled');
-      }
       throw _handleDioException(e);
     }
   }
@@ -502,32 +487,40 @@ class ApiService {
       final response = await _dio.get(
         ApiEndpoints.getMiniBulletin(studentUuid, examId.toString()),
         options: Options(
-          connectTimeout: const Duration(seconds: 10),
-          receiveTimeout: const Duration(seconds: 10),
+          connectTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
         ),
       );
 
       if (response.statusCode == 200) {
-        // Check if the response indicates success or if bulletin is not available
+        // Check if response contains JSON with availability flag instead of HTML
         if (response.data is Map<String, dynamic>) {
-          final data = response.data as Map<String, dynamic>;
-          if (data['success'] == false) {
-            throw Exception(data['message'] ?? 'Mini-bulletin access not enabled');
+          final responseMap = response.data as Map<String, dynamic>;
+          
+          // Check if this is an API response with data wrapper
+          if (responseMap.containsKey('data')) {
+            final dataContent = responseMap['data'];
+            
+            if (dataContent is Map<String, dynamic>) {
+              if (dataContent['available'] == false) {
+                final errorMsg = responseMap['message'] ?? 'Les notes ne sont pas encore publiées';
+                throw Exception(errorMsg);
+              }
+            }
+          }
+          
+          // Check if success flag is false
+          if (responseMap['success'] == false) {
+            throw Exception(responseMap['message'] ?? 'Erreur lors de la récupération du mini-bulletin');
           }
         }
+        
+        // HTML content - return as string
         return response.data.toString();
       } else {
         throw Exception('Failed to fetch mini-bulletin with status code ${response.statusCode}');
       }
     } on DioException catch (e) {
-      // Handle 403 Forbidden error (bulletin access not enabled)
-      if (e.response?.statusCode == 403) {
-        final data = e.response?.data;
-        if (data is Map<String, dynamic>) {
-          throw Exception(data['message'] ?? data['error'] ?? 'Mini-bulletin access not enabled');
-        }
-        throw Exception('Mini-bulletin access not enabled');
-      }
       throw _handleDioException(e);
     }
   }

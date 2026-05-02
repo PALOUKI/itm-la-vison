@@ -69,13 +69,13 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
           return SingleChildScrollView(
             child: Column(
               children: [
-                // Period tabs
+                // Period tabs (non scrollable)
                 _buildPeriodTabs(periods),
-                SizedBox(height: 16.h),
+                SizedBox(height: 12.h),
 
-                // Content tabs (Bulletin / Compositions)
+                // Content tabs (non scrollable)
                 _buildContentTabs(),
-                SizedBox(height: 16.h),
+                SizedBox(height: 12.h),
 
                 // Content based on selected tab
                 if (_selectedTab == 'bulletin')
@@ -83,7 +83,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
                 else
                   _buildCompositionsContent(),
 
-                SizedBox(height: 20.h),
+                SizedBox(height: 16.h),
               ],
             ),
           );
@@ -187,7 +187,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
             child: GestureDetector(
               onTap: () {
                 setState(() {
-                  _selectedTab = 'compositions';
+                  _selectedTab = 'examens';
                 });
               },
               child: Container(
@@ -195,17 +195,17 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
-                      color: _selectedTab == 'compositions' ? const Color(0xFF1E3A8A) : Colors.transparent,
+                      color: _selectedTab == 'examens' ? const Color(0xFF1E3A8A) : Colors.transparent,
                       width: 2,
                     ),
                   ),
                 ),
                 child: Center(
                   child: Text(
-                    'Compositions',
+                    'Examens',
                     style: TextStyle(
-                      color: _selectedTab == 'compositions' ? const Color(0xFF1E3A8A) : Colors.grey,
-                      fontWeight: _selectedTab == 'compositions' ? FontWeight.bold : FontWeight.normal,
+                      color: _selectedTab == 'examens' ? const Color(0xFF1E3A8A) : Colors.grey,
+                      fontWeight: _selectedTab == 'examens' ? FontWeight.bold : FontWeight.normal,
                       fontSize: 14.sp,
                     ),
                   ),
@@ -251,15 +251,15 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
       data: (exams) {
         if (exams.isEmpty) {
           return Padding(
-            padding: EdgeInsets.all(16.w),
+            padding: EdgeInsets.all(12.w),
             child: Center(
-              child: Text('Aucune composition pour cette période', style: TextStyle(fontSize: 14.sp)),
+              child: Text('Aucun examen pour cette période', style: TextStyle(fontSize: 14.sp)),
             ),
           );
         }
 
         return Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
+          padding: EdgeInsets.symmetric(horizontal: 12.w),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: exams.map((exam) {
@@ -269,7 +269,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
         );
       },
       loading: () => Padding(
-        padding: EdgeInsets.all(16.w),
+        padding: EdgeInsets.all(12.w),
         child: const CircularProgressIndicator(color: Color(0xFF1e3a8a)),
       ),
       error: (err, stack) => Padding(
@@ -338,49 +338,77 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20.r),
-                  topRight: Radius.circular(20.r),
-                ),
+        return Consumer(
+          builder: (context, ref, child) {
+            final miniBulletinState = ref.watch(
+              miniBulletinHtmlProvider(
+                MiniBulletinParams(studentUuid: widget.childUuid, examId: exam.id),
               ),
-              child: Column(
-                children: [
-                  // Handle bar
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: 12.h),
-                    child: Container(
-                      width: 40.w,
-                      height: 4.h,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(2.r),
-                      ),
+            );
+            
+            return DraggableScrollableSheet(
+              expand: false,
+              builder: (context, scrollController) {
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(20.r),
+                      topRight: Radius.circular(20.r),
                     ),
                   ),
-                  // Title
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                    child: Text(
-                      exam.title,
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF1E293B),
+                  child: Column(
+                    children: [
+                      // Handle bar
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        child: Container(
+                          width: 40.w,
+                          height: 4.h,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2.r),
+                          ),
+                        ),
                       ),
-                    ),
+                      // Title
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                        child: Text(
+                          exam.title,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      // Content
+                      Expanded(
+                        child: miniBulletinState.when(
+                          data: (htmlContent) {
+                            
+                            return _buildWebViewContainer(htmlContent);
+                          },
+                          loading: () {
+                            
+                            return const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a)));
+                          },
+                          error: (err, stack) {
+                            
+                            return SingleChildScrollView(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                                child: _buildErrorMessage(err.toString()),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                  // Content
-                  Expanded(
-                    child: _buildExamBulletinWebView(exam),
-                  ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
@@ -388,38 +416,21 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
     );
   }
 
-  Widget _buildExamBulletinWebView(Exam exam) {
-    final miniBulletinState = ref.watch(
-      miniBulletinHtmlProvider(
-        MiniBulletinParams(studentUuid: widget.childUuid, examId: exam.id),
-      ),
-    );
-
-    return miniBulletinState.when(
-      data: (htmlContent) {
-        return _buildWebViewContainer(htmlContent);
-      },
-      loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a))),
-      error: (err, stack) => Center(
-        child: Padding(
-          padding: EdgeInsets.all(16.w),
-          child: _buildErrorMessage(err.toString()),
-        ),
-      ),
-    );
-  }
 
   Widget _buildWebViewContainer(String htmlContent) {
-    return Container(
-      margin: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12.r),
-        child: WebViewWidget(
-          controller: _createWebViewController(htmlContent),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      child: Container(
+        height: 500.h,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.r),
+          child: WebViewWidget(
+            controller: _createWebViewController(htmlContent),
+          ),
         ),
       ),
     );

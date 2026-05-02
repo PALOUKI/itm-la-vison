@@ -51,14 +51,6 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
           icon: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20.sp),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.download_outlined, color: Colors.black, size: 20.sp),
-            onPressed: () {
-              // TODO: Download PDF
-            },
-          ),
-        ],
       ),
       body: gradesState.when(
         data: (grades) => _buildContent(context, grades),
