@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:vision/config/constants.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -15,32 +16,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // ❌ Ne plus réinitialiser l'auth ici : cela entrait en conflit
-    // avec l'initialisation déclenchée dans AuthNotifier.build.
-    // _initializeApp();
-  }
-
-  // On garde la méthode pour plus tard si on veut faire d'autres
-  // initialisations (remote config, etc.), mais sans toucher à l'auth.
-  Future<void> _initializeApp() async {
-    // Initialiser l'authentification (restauration token / user)
-    await ref.read(authStateProvider.notifier).initializeAuth();
-
-    // Attendre 2 secondes pour l'effet du splash screen
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    // ❗️On ne fait PLUS de navigation manuelle ici
-    // GoRouter + redirect (dans app_router.dart) décident où aller
-    // en fonction de authState (authenticated ou non).
   }
 
   @override
   Widget build(BuildContext context) {
-    // On peut regarder l'état pour éventuellement adapter l'UI plus tard
-    final authState = ref.watch(authStateProvider);
-    // debugPrint('Splash authState: $authState');
+    ref.watch(authStateProvider);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -66,6 +46,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                     color: Colors.black,
                   ),
                 ),
+                Container(
+                  width: 40.w,
+                  height: 4.h,
+                  margin: EdgeInsets.symmetric(vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xffe74c0d),
+                  ),
+                ),
                 SizedBox(height: 12.h),
                 // Tagline
                 Text(
@@ -78,9 +66,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 ),
                 SizedBox(height: 48.h),
                 // Loading Indicator
-                const CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1e3a8a)),
-                ),
+                //const VisionBusyIndicator(size: 38),
               ],
             ),
           ),

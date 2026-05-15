@@ -1,266 +1,259 @@
 import 'package:vision/domain/models/child.dart';
-import 'package:vision/domain/models/children_response.dart';
 
 class FinancesResponse {
-  final AcademicYear? currentYear;
-  final FinanceSummary summary;
+  final bool success;
+  final String message;
   final List<ChildFinance> children;
 
   FinancesResponse({
-    this.currentYear,
-    required this.summary,
+    required this.success,
+    required this.message,
     required this.children,
   });
 
   factory FinancesResponse.fromJson(Map<String, dynamic> json) {
-    final childrenData = json['children'];
-    final childrenList = childrenData is List ? childrenData : [];
-
+    final data = json['data'] as List? ?? [];
     return FinancesResponse(
-      currentYear: json['current_year'] != null
-          ? AcademicYear.fromJson(json['current_year'] as Map<String, dynamic>)
-          : null,
-      summary: FinanceSummary.fromJson(json['summary'] as Map<String, dynamic>),
-      children: childrenList.map((e) => ChildFinance.fromJson(e as Map<String, dynamic>)).toList(),
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      children: data.map((e) => ChildFinance.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 
-  /// Factory method to handle API response that returns a direct list of child finances
   factory FinancesResponse.fromJsonList(List<dynamic> jsonList) {
-    final children = jsonList.map((e) => ChildFinance.fromJson(e as Map<String, dynamic>)).toList();
-
-    // Calculate summary from children data
-    num totalPaid = 0;
-    for (var child in children) {
-      final paid = num.tryParse(child.totalPaid) ?? 0;
-      totalPaid += paid;
-    }
-
-    final summary = FinanceSummary(
-      totalDue: 0,
-      totalPaid: totalPaid,
-      remainingBalance: 0,
-      paymentPercentage: 0,
-    );
-
     return FinancesResponse(
-      currentYear: null,
-      summary: summary,
-      children: children,
-    );
-  }
-}
-
-class FinanceSummary {
-  final num totalDue;
-  final num totalPaid;
-  final num remainingBalance;
-  final num paymentPercentage;
-
-  FinanceSummary({
-    required this.totalDue,
-    required this.totalPaid,
-    required this.remainingBalance,
-    required this.paymentPercentage,
-  });
-
-  factory FinanceSummary.fromJson(Map<String, dynamic> json) {
-    return FinanceSummary(
-      totalDue: json['total_due'] ?? 0,
-      totalPaid: json['total_paid'] ?? 0,
-      remainingBalance: json['remaining_balance'] ?? 0,
-      paymentPercentage: json['payment_percentage'] ?? 0,
+      success: true,
+      message: "Data loaded from list",
+      children: jsonList.map((e) => ChildFinance.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
 
 class ChildFinance {
-  final Child student;
-  final Enrollment? enrollment;
-  final FinanceSummary summary;
-  final List<FinanceRecord> records;
-  final String totalPaid;
-  final List<PaymentData> recentPayments;
+  final StudentMinimal student;
+  final FinancialSummary summary;
+  final List<PaymentRecord> recentPayments;
+  final List<PaymentRecord> paymentHistory;
+  final List<EcheancierHeader> echeancier;
 
   ChildFinance({
     required this.student,
-    this.enrollment,
     required this.summary,
-    required this.records,
-    required this.totalPaid,
     required this.recentPayments,
+    required this.paymentHistory,
+    required this.echeancier,
   });
 
   factory ChildFinance.fromJson(Map<String, dynamic> json) {
-    // Handle both the old format (with summary/records) and new format (with total_paid/recent_payments)
-    final recordsData = json['records'];
-    final recordsList = recordsData is List ? recordsData : [];
-
-    final recentPaymentsData = json['recent_payments'];
-    final recentPaymentsList = recentPaymentsData is List ? recentPaymentsData : [];
-
-    final summary = json['summary'] != null
-        ? FinanceSummary.fromJson(json['summary'] as Map<String, dynamic>)
-        : FinanceSummary(
-            totalDue: 0,
-            totalPaid: num.tryParse(json['total_paid']?.toString() ?? '0') ?? 0,
-            remainingBalance: 0,
-            paymentPercentage: 0,
-          );
+    final recent = json['recent_payements'] as List? ?? [];
+    final history = json['paiement_history'] as List? ?? [];
+    final ech = json['echeancier'] as List? ?? [];
 
     return ChildFinance(
-      student: Child.fromJson(json['student'] as Map<String, dynamic>),
-      enrollment: json['enrollment'] != null ? Enrollment.fromJson(json['enrollment'] as Map<String, dynamic>) : null,
-      summary: summary,
-      records: recordsList.map((e) => FinanceRecord.fromJson(e as Map<String, dynamic>)).toList(),
-      totalPaid: json['total_paid']?.toString() ?? '0.00',
-      recentPayments: recentPaymentsList.map((e) => PaymentData.fromJson(e as Map<String, dynamic>)).toList(),
+      student: StudentMinimal.fromJson(json['student'] as Map<String, dynamic>),
+      summary: FinancialSummary.fromJson(json['financial_summary'] as Map<String, dynamic>),
+      recentPayments: recent.map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>)).toList(),
+      paymentHistory: history.map((e) => PaymentRecord.fromJson(e as Map<String, dynamic>)).toList(),
+      echeancier: ech.map((e) => EcheancierHeader.fromJson(e as Map<String, dynamic>)).toList(),
     );
   }
 }
 
-class FinanceRecord {
+class StudentMinimal {
   final int id;
-  final String uuid;
-  final String refNo;
-  final String year;
-  final bool paid;
-  final String amtPaid;
-  final String lastPaymentAmount;
-  final String? lastPaymentDate;
-  final String balance;
-  final List<PaymentHistory> paymentHistory;
-  final Payment payment;
+  final String matricule;
+  final String fullName;
+  final String email;
+  // Ajout de l'UUID pour la correspondance avec l'enfant sélectionné dans l'app
+  // Note: Si l'API ne renvoie pas d'UUID, on utilisera l'ID ou on fera correspondre par matricule
+  final String? uuid; 
 
-  FinanceRecord({
+  StudentMinimal({
     required this.id,
-    required this.uuid,
-    required this.refNo,
-    required this.year,
-    required this.paid,
-    required this.amtPaid,
-    required this.lastPaymentAmount,
-    this.lastPaymentDate,
-    required this.balance,
-    required this.paymentHistory,
-    required this.payment,
+    required this.matricule,
+    required this.fullName,
+    required this.email,
+    this.uuid,
   });
 
-  factory FinanceRecord.fromJson(Map<String, dynamic> json) {
-    final historyData = json['payment_history'];
-    final historyList = historyData is List ? historyData : [];
-
-    return FinanceRecord(
+  factory StudentMinimal.fromJson(Map<String, dynamic> json) {
+    return StudentMinimal(
       id: json['id'] as int,
-      uuid: json['uuid'] as String,
-      refNo: json['ref_no'] as String,
-      year: json['year'] as String,
-      paid: json['paid'] as bool? ?? false,
-      amtPaid: json['amt_paid'] as String? ?? '0',
-      lastPaymentAmount: json['last_payment_amount'] as String? ?? '0',
-      lastPaymentDate: json['last_payment_date'] as String?,
-      balance: json['balance'] as String? ?? '0',
-      paymentHistory: historyList.map((e) => PaymentHistory.fromJson(e as Map<String, dynamic>)).toList(),
-      payment: Payment.fromJson(json['payment'] as Map<String, dynamic>),
+      matricule: json['matricule'] as String? ?? '',
+      fullName: json['full_name'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      uuid: json['uuid'] as String?,
     );
   }
 }
 
-class PaymentHistory {
+class FinancialSummary {
+  final num totalDue;
+  final num totalPaid;
+  final num balanceRemaining;
+  final num percentagePaid;
+  final num totalDiscount;
+  final PaymentStatus status;
+  final LastPayment? lastPayment;
+
+  FinancialSummary({
+    required this.totalDue,
+    required this.totalPaid,
+    required this.balanceRemaining,
+    required this.percentagePaid,
+    required this.totalDiscount,
+    required this.status,
+    this.lastPayment,
+  });
+
+  factory FinancialSummary.fromJson(Map<String, dynamic> json) {
+    return FinancialSummary(
+      totalDue: json['total_due'] ?? 0,
+      totalPaid: json['total_paid'] ?? 0,
+      balanceRemaining: json['balance_remaining'] ?? 0,
+      percentagePaid: json['percentage_paid'] ?? 0,
+      totalDiscount: json['total_discount'] ?? 0,
+      status: PaymentStatus.fromJson(json['payment_status'] as Map<String, dynamic>),
+      lastPayment: json['last_payment'] != null 
+          ? LastPayment.fromJson(json['last_payment'] as Map<String, dynamic>)
+          : null,
+    );
+  }
+}
+
+class PaymentStatus {
+  final int paidCount;
+  final int unpaidCount;
+  final bool isFullyPaid;
+
+  PaymentStatus({
+    required this.paidCount,
+    required this.unpaidCount,
+    required this.isFullyPaid,
+  });
+
+  factory PaymentStatus.fromJson(Map<String, dynamic> json) {
+    return PaymentStatus(
+      paidCount: json['paid_count'] ?? 0,
+      unpaidCount: json['unpaid_count'] ?? 0,
+      isFullyPaid: json['is_fully_paid'] ?? false,
+    );
+  }
+}
+
+class LastPayment {
+  final num amount;
+  final String date;
+  final String? reference;
+
+  LastPayment({
+    required this.amount,
+    required this.date,
+    this.reference,
+  });
+
+  factory LastPayment.fromJson(Map<String, dynamic> json) {
+    return LastPayment(
+      amount: json['amount'] ?? 0,
+      date: json['date'] as String? ?? '',
+      reference: json['reference'] as String?,
+    );
+  }
+}
+
+class PaymentRecord {
   final String id;
   final num amount;
-  final String paymentDate;
-  final String? receiptNumber;
-  final String paymentMethod;
+  final String date;
+  final String? paymentMethod;
   final String? reference;
+  final String? receiptNumber;
+  final String? title;
 
-  PaymentHistory({
+  PaymentRecord({
     required this.id,
     required this.amount,
-    required this.paymentDate,
-    this.receiptNumber,
-    required this.paymentMethod,
+    required this.date,
+    this.paymentMethod,
     this.reference,
+    this.receiptNumber,
+    this.title,
   });
 
-  factory PaymentHistory.fromJson(Map<String, dynamic> json) {
-    return PaymentHistory(
-      id: json['id'] as String,
+  factory PaymentRecord.fromJson(Map<String, dynamic> json) {
+    return PaymentRecord(
+      id: json['id']?.toString() ?? '',
       amount: json['amount'] ?? 0,
-      paymentDate: json['payment_date'] as String,
-      receiptNumber: json['receipt_number'] as String?,
-      paymentMethod: json['payment_method'] as String,
+      date: json['date'] as String? ?? '',
+      paymentMethod: json['payment_method'] as String?,
       reference: json['reference'] as String?,
+      receiptNumber: json['receipt_number'] as String?,
+      title: json['title'] as String?,
     );
   }
 }
 
-class Payment {
-  final int id;
-  final String uuid;
+class EcheancierHeader {
   final String title;
-  final String amount;
-  final String year;
-  final String? reference;
-  final String method;
-  final String? description;
+  final num total;
+  final num paid;
+  final num remaining;
+  final String? dueDate;
+  final String status;
+  final List<Installment> installments;
 
-  Payment({
-    required this.id,
-    required this.uuid,
+  EcheancierHeader({
+    required this.title,
+    required this.total,
+    required this.paid,
+    required this.remaining,
+    this.dueDate,
+    required this.status,
+    required this.installments,
+  });
+
+  factory EcheancierHeader.fromJson(Map<String, dynamic> json) {
+    final inst = json['installments'] as List? ?? [];
+    return EcheancierHeader(
+      title: json['title'] as String? ?? '',
+      total: json['total'] ?? 0,
+      paid: json['paid'] ?? 0,
+      remaining: json['remaining'] ?? 0,
+      dueDate: json['due_date'] as String?,
+      status: json['status'] as String? ?? '',
+      installments: inst.map((e) => Installment.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class Installment {
+  final int installmentNumber;
+  final String title;
+  final num amount;
+  final num paid;
+  final num remaining;
+  final String? dueDate;
+  final String status;
+
+  Installment({
+    required this.installmentNumber,
     required this.title,
     required this.amount,
-    required this.year,
-    this.reference,
-    required this.method,
-    this.description,
+    required this.paid,
+    required this.remaining,
+    this.dueDate,
+    required this.status,
   });
 
-  factory Payment.fromJson(Map<String, dynamic> json) {
-    return Payment(
-      id: json['id'] as int,
-      uuid: json['uuid'] as String,
-      title: json['title'] as String,
-      amount: json['amount'] as String? ?? '0',
-      year: json['year'] as String,
-      reference: json['reference'] as String?,
-      method: json['method'] as String? ?? 'Cash',
-      description: json['description'] as String?,
-    );
-  }
-}
-
-class PaymentData {
-  final int id;
-  final String uuid;
-  final String? title;
-  final String? amount;
-  final String year;
-  final String? reference;
-  final String? method;
-  final String? description;
-
-  PaymentData({
-    required this.id,
-    required this.uuid,
-    this.title,
-    this.amount,
-    required this.year,
-    this.reference,
-    this.method,
-    this.description,
-  });
-
-  factory PaymentData.fromJson(Map<String, dynamic> json) {
-    return PaymentData(
-      id: json['id'] as int,
-      uuid: json['uuid'] as String,
-      title: json['title'] as String?,
-      amount: json['amount'] as String?,
-      year: json['year'] as String,
-      reference: json['reference'] as String?,
-      method: json['method'] as String?,
-      description: json['description'] as String?,
+  factory Installment.fromJson(Map<String, dynamic> json) {
+    return Installment(
+      installmentNumber: json['installment_number'] ?? 0,
+      title: json['title'] as String? ?? '',
+      amount: json['amount'] ?? 0,
+      paid: json['paid'] ?? 0,
+      remaining: json['remaining'] ?? 0,
+      dueDate: json['due_date'] as String?,
+      status: json['status'] as String? ?? '',
     );
   }
 }

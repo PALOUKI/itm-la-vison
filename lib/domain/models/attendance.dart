@@ -1,85 +1,135 @@
-import 'package:vision/domain/models/common_models.dart';
-
 class AttendanceResponse {
-  final AcademicYear currentYear;
-  final PeriodTimeRange period;
-  final AttendanceStats stats;
-  final List<Attendance> attendances;
+  final StudentSummary student;
+  final AttendanceStats overallStats;
+  final List<MonthAttendance> byMonth;
 
   AttendanceResponse({
-    required this.currentYear,
-    required this.period,
-    required this.stats,
-    required this.attendances,
+    required this.student,
+    required this.overallStats,
+    required this.byMonth,
   });
 
   factory AttendanceResponse.fromJson(Map<String, dynamic> json) {
-    final attendancesList = json['attendances'] as List<dynamic>? ?? [];
+    final data = json['data'] as Map<String, dynamic>;
+    final monthList = data['by_month'] as List<dynamic>? ?? [];
+    
+    final months = monthList.map((e) => MonthAttendance.fromJson(e as Map<String, dynamic>)).toList();
+    
+    // Recalculer les statistiques globales pour exclure les absences justifiées (avec raison)
+    int totalAbsences = 0;
+    int totalLate = 0;
+    int totalPresent = 0;
+    int totalExcused = 0;
+    int totalRecords = 0;
+
+    for (var month in months) {
+      for (var record in month.records) {
+        totalRecords++;
+        if (record.isAbsent) {
+          if (!record.justified) {
+            totalAbsences++;
+          } else {
+            totalExcused++;
+          }
+        } else if (record.isLate) {
+          totalLate++;
+        } else if (record.isPresent) {
+          totalPresent++;
+        } else if (record.isExcused) {
+          totalExcused++;
+        }
+      }
+    }
+
+    final overallStats = AttendanceStats(
+      total: totalRecords,
+      present: totalPresent,
+      absent: totalAbsences,
+      late: totalLate,
+      excused: totalExcused,
+    );
+    
     return AttendanceResponse(
-      currentYear: AcademicYear.fromJson(json['current_year'] as Map<String, dynamic>),
-      period: PeriodTimeRange.fromJson(json['period'] as Map<String, dynamic>),
-      stats: AttendanceStats.fromJson(json['stats'] as Map<String, dynamic>),
-      attendances: attendancesList
-          .map((e) => Attendance.fromJson(e as Map<String, dynamic>))
-          .toList(),
-    );
-  }
-
-  /// Factory method to handle API response that returns a direct list of attendances
-  factory AttendanceResponse.fromJsonList(List<dynamic> jsonList) {
-    final attendances = jsonList.map((e) => Attendance.fromJson(e as Map<String, dynamic>)).toList();
-
-    // Create default values for fields not provided by the API
-    final now = DateTime.now();
-    final currentYear = AcademicYear(
-      id: 0,
-      uuid: '',
-      name: 'Current Year',
-      startDate: DateTime(now.year, 1, 1),
-      endDate: DateTime(now.year, 12, 31),
-      isCurrent: true,
-    );
-
-    final period = PeriodTimeRange(
-      start: now.toString(),
-      end: now.toString(),
-    );
-
-    final presentCount = attendances.where((a) => a.status == 'present').length;
-    final absentCount = attendances.where((a) => a.status == 'absent').length;
-    final lateCount = attendances.where((a) => a.status == 'late').length;
-    final excusedCount = attendances.where((a) => a.status == 'excused').length;
-
-    final stats = AttendanceStats(
-      total: attendances.length,
-      present: presentCount,
-      absent: absentCount,
-      late: lateCount,
-      excused: excusedCount,
-    );
-
-    return AttendanceResponse(
-      currentYear: currentYear,
-      period: period,
-      stats: stats,
-      attendances: attendances,
+      student: StudentSummary.fromJson(data['student'] as Map<String, dynamic>),
+      overallStats: overallStats,
+      byMonth: months,
     );
   }
 }
 
-class PeriodTimeRange {
-  final String start;
-  final String end;
+class StudentSummary {
+  final int id;
+  final String matricule;
+  final String fullName;
 
-  PeriodTimeRange({
-    required this.start,
-    required this.end,
+  StudentSummary({
+    required this.id,
+    required this.matricule,
+    required this.fullName,
   });
 
-  factory PeriodTimeRange.fromJson(Map<String, dynamic> json) {
-    return PeriodTimeRange(
-      start: json['start'] as String,
-      end: json['end'] as String,
+  factory StudentSummary.fromJson(Map<String, dynamic> json) {
+    return StudentSummary(
+      id: json['id'] as int,
+      matricule: json['matricule'] as String? ?? '',
+      fullName: json['full_name'] as String? ?? '',
+    );
+  }
+}
+
+class MonthAttendance {
+  final String month;
+  final String monthLabel;
+  final AttendanceStats stats;
+  final List<Attendance> records;
+
+  MonthAttendance({
+    required this.month,
+    required this.monthLabel,
+    required this.stats,
+    required this.records,
+  });
+
+  factory MonthAttendance.fromJson(Map<String, dynamic> json) {
+    final recordsList = json['records'] as List<dynamic>? ?? [];
+    final records = recordsList.map((e) => Attendance.fromJson(e as Map<String, dynamic>)).toList();
+    
+    // Recalculer les stats du mois pour exclure les absences justifiées
+    int monthAbsences = 0;
+    int monthLate = 0;
+    int monthPresent = 0;
+    int monthExcused = 0;
+    int monthTotal = records.length;
+
+    for (var record in records) {
+      if (record.isAbsent) {
+        if (!record.justified) {
+          monthAbsences++;
+        } else {
+          monthExcused++;
+        }
+      } else if (record.isLate) {
+        monthLate++;
+      } else if (record.isPresent) {
+        monthPresent++;
+      } else if (record.isExcused) {
+        monthExcused++;
+      }
+    }
+
+    final stats = AttendanceStats(
+      total: monthTotal,
+      present: monthPresent,
+      absent: monthAbsences,
+      late: monthLate,
+      excused: monthExcused,
+    );
+
+    return MonthAttendance(
+      month: json['month'] as String,
+      monthLabel: json['month_label'] as String,
+      stats: stats,
+      records: records,
     );
   }
 }
@@ -101,11 +151,11 @@ class AttendanceStats {
 
   factory AttendanceStats.fromJson(Map<String, dynamic> json) {
     return AttendanceStats(
-      total: json['total'] as int? ?? 0,
-      present: json['present'] as int? ?? 0,
-      absent: json['absent'] as int? ?? 0,
-      late: json['late'] as int? ?? 0,
-      excused: json['excused'] as int? ?? 0,
+      total: json['total_records'] ?? json['total_count'] ?? 0,
+      present: json['present_count'] ?? 0,
+      absent: json['absent_count'] ?? 0,
+      late: json['late_count'] ?? 0,
+      excused: json['excused_count'] ?? 0,
     );
   }
 
@@ -117,125 +167,86 @@ class AttendanceStats {
 
 class Attendance {
   final int id;
-  final String uuid;
   final DateTime date;
+  final String dayName;
   final String startTime;
   final String endTime;
-  final String status; // present, absent, late, excused
-  final String? arrivalTime;
+  final String status;
+  final bool isPresent;
+  final bool isAbsent;
+  final bool isLate;
+  final bool isExcused;
   final String? reason;
-  final bool justified;
   final Subject? subject;
   final Teacher? teacher;
-  final Schedule? schedule;
 
   Attendance({
     required this.id,
-    required this.uuid,
     required this.date,
+    required this.dayName,
     required this.startTime,
     required this.endTime,
     required this.status,
-    this.arrivalTime,
+    required this.isPresent,
+    required this.isAbsent,
+    required this.isLate,
+    required this.isExcused,
     this.reason,
-    required this.justified,
     this.subject,
     this.teacher,
-    this.schedule,
   });
+
+  bool get justified => isExcused || (reason != null && reason!.trim().isNotEmpty);
 
   factory Attendance.fromJson(Map<String, dynamic> json) {
     return Attendance(
       id: json['id'] as int,
-      uuid: json['uuid'] as String,
       date: DateTime.parse(json['date'] as String),
+      dayName: json['day_name'] as String? ?? '',
       startTime: json['start_time'] as String? ?? '',
       endTime: json['end_time'] as String? ?? '',
       status: json['status'] as String,
-      arrivalTime: json['arrival_time'] as String?,
+      isPresent: json['is_present'] as bool? ?? false,
+      isAbsent: json['is_absent'] as bool? ?? false,
+      isLate: json['is_late'] as bool? ?? false,
+      isExcused: json['is_excused'] as bool? ?? false,
       reason: json['reason'] as String?,
-      justified: json['justified'] as bool? ?? false,
       subject: json['subject'] != null ? Subject.fromJson(json['subject'] as Map<String, dynamic>) : null,
       teacher: json['teacher'] != null ? Teacher.fromJson(json['teacher'] as Map<String, dynamic>) : null,
-      schedule: json['schedule'] != null ? Schedule.fromJson(json['schedule'] as Map<String, dynamic>) : null,
     );
   }
 }
 
 class Subject {
   final int id;
-  final String uuid;
   final String name;
-  final String code;
-  final int coefficient;
 
   Subject({
     required this.id,
-    required this.uuid,
     required this.name,
-    required this.code,
-    required this.coefficient,
   });
 
   factory Subject.fromJson(Map<String, dynamic> json) {
     return Subject(
       id: json['id'] as int,
-      uuid: json['uuid'] as String,
       name: json['name'] as String,
-      code: json['code'] as String,
-      coefficient: json['coefficient'] as int? ?? 1,
     );
   }
 }
 
 class Teacher {
   final int id;
-  final String uuid;
-  final String fullName;
+  final String name;
 
   Teacher({
     required this.id,
-    required this.uuid,
-    required this.fullName,
+    required this.name,
   });
 
   factory Teacher.fromJson(Map<String, dynamic> json) {
     return Teacher(
       id: json['id'] as int,
-      uuid: json['uuid'] as String,
-      fullName: json['full_name'] as String,
-    );
-  }
-}
-
-class Schedule {
-  final int id;
-  final String uuid;
-  final String dayOfWeek;
-  final DateTime startTime;
-  final DateTime endTime;
-  final String? room;
-  final Teacher? teacher;
-
-  Schedule({
-    required this.id,
-    required this.uuid,
-    required this.dayOfWeek,
-    required this.startTime,
-    required this.endTime,
-    this.room,
-    this.teacher,
-  });
-
-  factory Schedule.fromJson(Map<String, dynamic> json) {
-    return Schedule(
-      id: json['id'] as int,
-      uuid: json['uuid'] as String,
-      dayOfWeek: json['day_of_week'] as String,
-      startTime: DateTime.parse(json['start_time'] as String),
-      endTime: DateTime.parse(json['end_time'] as String),
-      room: json['room'] as String?,
-      teacher: json['teacher'] != null ? Teacher.fromJson(json['teacher'] as Map<String, dynamic>) : null,
+      name: json['name'] as String,
     );
   }
 }

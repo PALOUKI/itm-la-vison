@@ -5,7 +5,8 @@ import 'package:intl/intl.dart';
 import 'package:vision/config/themes/app_colors.dart';
 import 'package:vision/domain/models/finance.dart';
 import 'package:vision/presentation/viewmodels/finances_viewmodel.dart';
-
+import 'package:vision/presentation/viewmodels/children_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 class FinancesScreen extends ConsumerWidget {
   final String childUuid;
@@ -20,7 +21,15 @@ class FinancesScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('Paiements', style: TextStyle(color: Colors.black, fontSize: 18.sp, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        title: Text(
+          'Paiements',
+          style: TextStyle(
+            color: Colors.black,
+            fontSize: 18.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20.sp),
           onPressed: () => Navigator.of(context).pop(),
@@ -32,43 +41,47 @@ class FinancesScreen extends ConsumerWidget {
 
   Widget _buildBody(BuildContext context, WidgetRef ref, FinancesState state) {
     if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a)));
+      return const FinancesLoadingView();
     }
 
     if (state.isError) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(state.errorOrNull ?? 'Erreur lors du chargement des finances'),
-            TextButton(
-              onPressed: () => ref.read(financesStateProvider.notifier).fetchFinances(),
-              child: const Text("Réessayer"),
-            )
-          ],
-        ),
+      return VisionStateView(
+        icon: Icons.account_balance_wallet_outlined,
+        title: 'Paiements indisponibles',
+        message: state.errorOrNull ?? 'Impossible de charger les données financières.',
+        actionLabel: 'Réessayer',
+        onAction: () => ref.read(financesStateProvider.notifier).fetchFinances(),
+        accentColor: const Color(0xFFDC2626),
       );
     }
 
     final data = state.dataOrNull;
-    if (data == null) {
-      return const Center(child: Text("Aucune donnée financière trouvée."));
+    if (data == null || data.response.children.isEmpty) {
+      return const VisionStateView(
+        icon: Icons.receipt_long_outlined,
+        title: 'Aucune donnée financière',
+        message: 'Les informations de paiement seront affichées ici dès qu’elles seront disponibles.',
+      );
     }
 
-    // Retrouver l'enfant sélectionné
+    // Retrouver le matricule de l'enfant à partir de son UUID
+    final childrenState = ref.watch(childrenStateProvider);
+    String? childMatricule;
+    if (childrenState is ChildrenStateLoaded) {
+      try {
+        childMatricule = childrenState.data.children.firstWhere((c) => c.uuid == childUuid).matricule;
+      } catch (e) {}
+    }
+
+    // Trouver les données spécifiques à l'enfant (par matricule ou par défaut)
     final childFinance = data.response.children.firstWhere(
-      (c) => c.student.uuid == childUuid,
+      (c) => c.student.matricule == childMatricule || c.student.uuid == childUuid,
       orElse: () => data.response.children.first,
     );
-    final summary = childFinance.summary;
 
-    final records = childFinance.records;
-    List<PaymentHistory> allPayments = [];
-    for (var r in records) {
-      allPayments.addAll(r.paymentHistory);
-    }
-    // Sort payments descending
-    allPayments.sort((a, b) => b.paymentDate.compareTo(a.paymentDate));
+    final summary = childFinance.summary;
+    final history = childFinance.paymentHistory;
+    final echeancier = childFinance.echeancier;
 
     return RefreshIndicator(
       onRefresh: () => ref.read(financesStateProvider.notifier).fetchFinances(),
@@ -78,22 +91,29 @@ class FinancesScreen extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. Situation Globale Card
+            // 1. Situation Globale
             _buildSituationGlobale(summary),
 
             SizedBox(height: 24.h),
 
             // 2. Échéancier
-            _buildSectionHeader('Échéancier', null),
+            _buildSectionHeader('Échéancier', Icons.calendar_month_outlined),
             SizedBox(height: 12.h),
-            ...records.map(_buildEcheancierItem),
+            if (echeancier.isEmpty)
+              _buildEmptyState(
+                Icons.event_note_outlined,
+                'Aucun échéancier disponible',
+                'Aucune échéance n’a été publiée pour le moment.',
+              )
+            else
+              ...echeancier.expand((h) => h.installments).map(_buildInstallmentItem),
 
             SizedBox(height: 24.h),
 
             // 3. Derniers paiements
-            _buildSectionHeader('Derniers paiements', null),
+            _buildSectionHeader('Derniers paiements', Icons.history),
             SizedBox(height: 12.h),
-            _buildDerniersPaiementsList(allPayments),
+            _buildDerniersPaiementsList(history),
 
             SizedBox(height: 24.h),
 
@@ -107,19 +127,15 @@ class FinancesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSituationGlobale(FinanceSummary summary) {
-    // Determine progress bar length
-    final double total = summary.totalDue.toDouble();
-    final double paid = summary.totalPaid.toDouble();
-    final double percentage = summary.paymentPercentage.toDouble();
-
+  Widget _buildSituationGlobale(FinancialSummary summary) {
+    final double percentage = summary.percentagePaid.toDouble();
     final formatter = NumberFormat("#,###", "fr_FR");
 
     return Container(
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
-        color: AppColors.darkBlue, // Dark blue
-        borderRadius: BorderRadius.circular(16.r),
+        color: AppColors.darkBlue,
+        borderRadius: BorderRadius.circular(20.r),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF1c3672).withOpacity(0.3),
@@ -129,43 +145,41 @@ class FinancesScreen extends ConsumerWidget {
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Situation Globale',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    'Année Académique 2023-2024',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 12.sp,
-                    ),
-                  ),
-                ],
+              Text(
+                'Situation Globale',
+                style: TextStyle(color: Colors.white, fontSize: 16.sp, fontWeight: FontWeight.bold),
               ),
               Container(
-                padding: EdgeInsets.all(8.w),
+                height: 40.h,
+                width: 40.h,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  Icons.credit_card_outlined,
-                  color: Colors.white,
-                  size: 20.sp,
+                child: Center(
+                  child: Icon(
+                    Icons.credit_card_outlined,
+                    color: Colors.white.withOpacity(0.5),
+                    size: 22.sp,
+                  ),
                 ),
+              ),
+
+            ],
+          ),
+          SizedBox(height: 20.h),
+          Row(
+            children: [
+              Expanded(
+                child: _buildAmountField('TOTAL PAYÉ', summary.totalPaid, Colors.white),
+              ),
+              Container(width: 1, height: 40.h, color: Colors.white.withOpacity(0.1)),
+              Expanded(
+                child: _buildAmountField('RESTE À PAYER', summary.balanceRemaining, const Color(0xFFFB7185), isRight: true),
               ),
             ],
           ),
@@ -173,102 +187,26 @@ class FinancesScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'TOTAL PAYÉ',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    '${formatter.format(paid)} F',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 22.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'RESTE À PAYER',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.7),
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    '${formatter.format(summary.remainingBalance)} F',
-                    style: TextStyle(
-                      color: const Color(0xFFEF4444), // Red
-                      fontSize: 22.sp,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          SizedBox(height: 16.h),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Progression des paiements',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 11.sp,
-                ),
-              ),
-              Text(
-                '${percentage.toStringAsFixed(0)}%',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Progression', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11.sp)),
+              Text('${percentage.toStringAsFixed(1)}%', style: TextStyle(color: Colors.white, fontSize: 12.sp, fontWeight: FontWeight.bold)),
             ],
           ),
           SizedBox(height: 8.h),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4.r),
+            borderRadius: BorderRadius.circular(10.r),
             child: LinearProgressIndicator(
               value: percentage / 100,
-              backgroundColor: Colors.white.withOpacity(0.2),
+              backgroundColor: Colors.white.withOpacity(0.1),
               valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-              minHeight: 6.h,
+              minHeight: 8.h,
             ),
           ),
           SizedBox(height: 16.h),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Montant total scolarité',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.7),
-                  fontSize: 12.sp,
-                ),
-              ),
-              Text(
-                '${formatter.format(total)} FCFA',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Total Scolarité', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12.sp)),
+              Text('${formatter.format(summary.totalDue)} FCFA', style: TextStyle(color: Colors.white, fontSize: 14.sp, fontWeight: FontWeight.bold)),
             ],
           ),
         ],
@@ -276,163 +214,84 @@ class FinancesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title, String? actionText) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildAmountField(String label, num amount, Color color, {bool isRight = false}) {
+    final formatter = NumberFormat("#,###", "fr_FR");
+    return Column(
+      crossAxisAlignment: isRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              title == 'Échéancier' ? Icons.calendar_month_outlined : Icons.history,
-              size: 20.sp,
-              color: const Color(0xFF1c3672),
-            ),
-            SizedBox(width: 8.w),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-          ],
-        ),
-        if (actionText != null)
-          TextButton(
-            onPressed: () {},
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            child: Text(
-              actionText,
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: const Color(0xFF1c3672),
-                decoration: TextDecoration.underline,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10.sp, fontWeight: FontWeight.bold)),
+        SizedBox(height: 4.h),
+        FittedBox(
+          child: Text(
+            '${formatter.format(amount)} F',
+            style: TextStyle(color: color, fontSize: 20.sp, fontWeight: FontWeight.bold),
           ),
+        ),
       ],
     );
   }
 
-  Widget _buildEcheancierItem(FinanceRecord record) {
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 20.sp, color: const Color(0xFF1e3a8a)),
+        SizedBox(width: 8.w),
+        Text(
+          title,
+          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildInstallmentItem(Installment installment) {
     final formatter = NumberFormat("#,###", "fr_FR");
-    final num amt = num.tryParse(record.payment.amount) ?? 0;
-
-    // Détermination du statut et des couleurs à partir de record.paid
-    // Dans un vrai scénario, "À venir" ou "En retard" nécessiterait une date d'échéance.
-    // On simule pour coller à la maquette.
-    bool estPaye = record.paid;
-    bool estRetard = !estPaye && (record.balance != "0" && amt > 150000); // simulation arbitraire
-    
-    IconData iconData = Icons.account_balance_wallet_outlined;
-    Color iconColor = Colors.grey.shade600;
-    Color iconBgColor = Colors.grey.shade100;
-    String statusStr = 'À venir';
-    Color statusBgColor = Colors.grey.shade100;
-    Color statusTextColor = Colors.black87;
-
-    if (estPaye) {
-      iconData = Icons.check_circle_outline;
-      iconColor = Colors.black87;
-      iconBgColor = Colors.white;
-      statusStr = 'Payé';
-    } else if (estRetard) {
-      iconData = Icons.error_outline;
-      iconColor = const Color(0xFFEF4444);
-      iconBgColor = const Color(0xFFFEF2F2);
-      statusStr = 'En retard';
-      statusBgColor = const Color(0xFFFCA5A5);
-      statusTextColor = Colors.white;
-    }
+    final bool isPaid = installment.status == 'paid';
+    final bool isPartial = installment.status == 'partial';
 
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: estRetard ? const Color(0xFFFFF5F5) : Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: estRetard ? const Color(0xFFFECACA) : Colors.grey.shade200,
-          width: 1,
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: isPartial ? const Color(0xFFFEF3C7) : Colors.grey.shade100),
       ),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(8.w),
+            padding: EdgeInsets.all(10.w),
             decoration: BoxDecoration(
-              color: iconBgColor,
+              color: isPaid ? const Color(0xFFF0FDF4) : (isPartial ? const Color(0xFFFFFBEB) : const Color(0xFFF1F5F9)),
               shape: BoxShape.circle,
             ),
-            child: Icon(iconData, color: iconColor, size: 20.sp),
+            child: Icon(
+              isPaid ? Icons.check_circle : (isPartial ? Icons.pending_actions : Icons.schedule),
+              color: isPaid ? const Color(0xFF10B981) : (isPartial ? const Color(0xFFF59E0B) : Colors.grey.shade500),
+              size: 20.sp,
+            ),
           ),
           SizedBox(width: 12.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  record.payment.title,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                Text(installment.title, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: const Color(0xFF334155))),
+                SizedBox(height: 2.h),
+                if (installment.dueDate != null)
+                  Text(
+                    'Échéance: ${DateFormat('dd MMM yyyy', 'fr_FR').format(DateTime.parse(installment.dueDate!))}',
+                    style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade500),
                   ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  'Échéance: ${record.year}', // Idealement une vraie date
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
               ],
             ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '${formatter.format(amt)} FCFA',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
+              Text('${formatter.format(installment.amount)} F', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: const Color(0xFF1e3a8a))),
               SizedBox(height: 4.h),
-              if (estPaye)
-                Text(
-                  'Payé',
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                )
-              else
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-                  decoration: BoxDecoration(
-                    color: statusBgColor,
-                    borderRadius: BorderRadius.circular(12.r),
-                  ),
-                  child: Text(
-                    statusStr,
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      color: statusTextColor,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+              _buildStatusBadge(installment.status),
             ],
           ),
         ],
@@ -440,145 +299,123 @@ class FinancesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDerniersPaiementsList(List<PaymentHistory> payments) {
-    if (payments.isEmpty) {
-      return Container(
-        padding: EdgeInsets.all(20.w),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16.r),
-          border: Border.all(color: Colors.grey.shade200),
+  Widget _buildStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    String label;
+
+    switch (status) {
+      case 'paid':
+        bgColor = const Color(0xFFDCFCE7);
+        textColor = const Color(0xFF166534);
+        label = 'PAYÉ';
+        break;
+      case 'partial':
+        bgColor = const Color(0xFFFEF3C7);
+        textColor = const Color(0xFF92400E);
+        label = 'PARTIEL';
+        break;
+      case 'overdue':
+        bgColor = const Color(0xFFFEE2E2);
+        textColor = const Color(0xFF991B1B);
+        label = 'RETARD';
+        break;
+      default:
+        bgColor = const Color(0xFFF1F5F9);
+        textColor = Colors.grey.shade600;
+        label = 'EN ATTENTE';
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10.r),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 9.sp,
+          fontWeight: FontWeight.bold,
+          color: textColor,
         ),
-        child: const Center(child: Text("Aucun historique récent.")),
-      );
+      ),
+    );
+  }
+
+  Widget _buildDerniersPaiementsList(List<PaymentRecord> payments) {
+    if (payments.isEmpty) {
+      return _buildEmptyState(Icons.history_toggle_off_rounded, 'Aucun paiement', 'L’historique apparaîtra ici.');
     }
 
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: Colors.grey.shade100),
       ),
       child: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    'DATE',
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    'MONTANT',
-                    style: TextStyle(
-                      fontSize: 10.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ),
-                Text(
-                  'REÇU',
-                  style: TextStyle(
-                    fontSize: 10.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-              ],
+          ...payments.take(5).map((p) => _buildPaiementRow(p)),
+          if (payments.length > 5)
+            Padding(
+              padding: EdgeInsets.all(12.h),
+              child: Text('Voir tout l’historique', style: TextStyle(fontSize: 12.sp, color: const Color(0xFF1e3a8a), fontWeight: FontWeight.w600)),
             ),
-          ),
-          const Divider(height: 1),
-          // Afficher les 3 derniers par exemple
-          ...payments.take(3).map((p) => _buildPaiementRow(p)),
-
-          // Bouton Télécharger tout
-          const Divider(height: 1),
-          InkWell(
-            onTap: () {},
-            child: Container(
-              width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 16.h),
-              alignment: Alignment.center,
-              child: Text(
-                "Télécharger l'historique complet (PDF)",
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: const Color(0xFF1c3672),
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildPaiementRow(PaymentHistory history) {
+  Widget _buildPaiementRow(PaymentRecord payment) {
     final formatter = NumberFormat("#,###", "fr_FR");
-    DateTime date = DateTime.tryParse(history.paymentDate) ?? DateTime.now();
+    DateTime date = DateTime.tryParse(payment.date) ?? DateTime.now();
 
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  DateFormat('dd MMM\nyyyy', 'fr_FR').format(date).toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.black87,
-                    height: 1.2,
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  history.paymentMethod,
-                  style: TextStyle(
-                    fontSize: 9.sp,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              '${formatter.format(history.amount)} FCFA',
-              style: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.all(16.w),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.w),
+                decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(10.r)),
+                child: Icon(Icons.receipt_long_outlined, size: 18.sp, color: const Color(0xFF475569)),
               ),
-            ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(DateFormat('dd MMMM yyyy', 'fr_FR').format(date), style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B))),
+                    Text(payment.paymentMethod ?? 'Paiement', style: TextStyle(fontSize: 11.sp, color: Colors.grey.shade500)),
+                  ],
+                ),
+              ),
+              Text(
+                '${formatter.format(payment.amount)} F',
+                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: const Color(0xFF10B981)),
+              ),
+            ],
           ),
-          IconButton(
-            icon: Icon(
-              Icons.download_outlined,
-              color: const Color(0xFF1c3672),
-              size: 20.sp,
-            ),
-            onPressed: () {},
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
+        ),
+        Divider(height: 1, color: Colors.grey.shade50),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(IconData icon, String title, String msg) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(24.w),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16.r)),
+      child: Column(
+        children: [
+          Icon(icon, size: 40.sp, color: Colors.grey.shade300),
+          SizedBox(height: 12.h),
+          Text(title, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+          SizedBox(height: 4.h),
+          Text(msg, style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade400)),
         ],
       ),
     );
@@ -588,41 +425,18 @@ class FinancesScreen extends ConsumerWidget {
     return Container(
       padding: EdgeInsets.all(16.w),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F6FB), // Light blue-grey background
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(16.r),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.info_outline,
-            color: const Color(0xFF475569),
-            size: 20.sp,
-          ),
+          Icon(Icons.info_outline, color: const Color(0xFF1e3a8a), size: 18.sp),
           SizedBox(width: 12.w),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'NOTE IMPORTANTE',
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF334155),
-                  ),
-                ),
-                SizedBox(height: 4.h),
-                Text(
-                  "Les paiements s'effectuent directement à la comptabilité de l'école ou par virement bancaire. Aucun paiement en ligne n'est requis sur cette application.",
-                  style: TextStyle(
-                    fontSize: 11.sp,
-                    color: const Color(0xFF64748B),
-                    height: 1.4,
-                  ),
-                ),
-              ],
+            child: Text(
+              "Les paiements s'effectuent directement à la comptabilité de l'école. Cette application sert uniquement au suivi de votre situation financière.",
+              style: TextStyle(fontSize: 11.sp, color: const Color(0xFF475569), height: 1.5),
             ),
           ),
         ],

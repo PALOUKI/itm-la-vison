@@ -3,12 +3,6 @@ import 'package:vision/data/repositories/announcements_repository.dart';
 import 'package:vision/domain/models/announcement.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
 
-// Providers
-final announcementsRepositoryProvider = Provider<AnnouncementsRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return AnnouncementsRepository(apiService: apiService);
-});
-
 // Announcements State Provider
 final announcementsStateProvider =
     NotifierProvider<AnnouncementsNotifier, AnnouncementsState>(
@@ -22,6 +16,14 @@ class AnnouncementsNotifier extends Notifier<AnnouncementsState> {
   @override
   AnnouncementsState build() {
     _repository = ref.watch(announcementsRepositoryProvider);
+    
+    // On écoute l'état d'authentification pour charger les annonces dès qu'on est connecté
+    final authState = ref.watch(authStateProvider);
+    
+    if (authState.isAuthenticated) {
+      Future.microtask(() => fetchAnnouncements());
+    }
+    
     return const AnnouncementsState.loading();
   }
 
@@ -53,6 +55,17 @@ sealed class AnnouncementsState {
 
   String? get errorOrNull =>
       this is AnnouncementsStateError ? (this as AnnouncementsStateError).message : null;
+
+  T when<T>({
+    required T Function() loading,
+    required T Function(AnnouncementsStateLoaded data) data,
+    required T Function(String message, StackTrace? stack) error,
+  }) {
+    if (this is AnnouncementsStateLoading) return loading();
+    if (this is AnnouncementsStateLoaded) return data(this as AnnouncementsStateLoaded);
+    if (this is AnnouncementsStateError) return error((this as AnnouncementsStateError).message, null);
+    throw Exception('Unknown state: $this');
+  }
 }
 
 class AnnouncementsStateLoading extends AnnouncementsState {

@@ -1,0 +1,74 @@
+{
+  "success": true,
+  "message": "Child attendance retrieved",
+  "data": {
+    "student": {
+      "id": 6,
+      "matricule": "ELV20260001",
+      "full_name": "Nestor Parent"
+    },
+    "overall_stats": {
+      "present_count": 0,
+      "absent_count": 2,
+      "late_count": 0,
+      "total_records": 2
+    },
+    "by_month": [
+      {
+        "month": "2026-05",
+        "month_label": "mai 2026",
+        "stats": {
+          "present_count": 0,
+          "absent_count": 2,
+          "late_count": 0,
+          "excused_count": 2,
+          "total_count": 2
+        },
+        "records": [
+          {
+            "id": 3,
+            "date": "2026-05-13",
+            "day_name": "mercredi",
+            "start_time": "08:00:00",
+            "end_time": "08:50:00",
+            "status": "excused",
+            "is_present": false,
+            "is_absent": true,
+            "is_late": false,
+            "is_excused": true,
+            "reason": "rendez vous medical",
+            "subject": {
+              "id": 201,
+              "name": "Allemand"
+            },
+            "teacher": {
+              "id": 53,
+              "name": "Prof test"
+            }
+          },
+          {
+            "id": 4,
+            "date": "2026-05-14",
+            "day_name": "jeudi",
+            "start_time": "09:00:00",
+            "end_time": "09:50:00",
+            "status": "excused",
+            "is_present": false,
+            "is_absent": true,
+            "is_late": false,
+            "is_excused": true,
+            "reason": "Malade mentale",
+            "subject": {
+              "id": 201,
+              "name": "Allemand"
+            },
+            "teacher": {
+              "id": 53,
+              "name": "Prof test"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

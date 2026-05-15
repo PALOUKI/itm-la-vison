@@ -12,6 +12,7 @@ import 'package:vision/presentation/viewmodels/announcements_viewmodel.dart';
 import 'package:vision/presentation/viewmodels/navigation_viewmodel.dart';
 import 'package:vision/presentation/widgets/child_card.dart';
 import 'package:vision/presentation/widgets/home_header.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -24,10 +25,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() {
-      ref.read(childrenStateProvider.notifier).fetchChildren();
-      ref.read(announcementsStateProvider.notifier).fetchAnnouncements();
-    });
+    // Les données sont chargées automatiquement par HomeNotifier.build()
   }
 
   @override
@@ -54,7 +52,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     AnnouncementsState announcementsState,
   ) {
     if (authState is! AuthStateAuthenticated) {
-      return const Center(child: CircularProgressIndicator());
+      return const HomeLoadingView();
     }
 
     final user = authState.user;
@@ -62,9 +60,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return Column(
       children: [
         // 1. TOPBAR SIMPLE (Logo + Notification)
-        HomeHeader(
-          onNotificationTap: () {},
-        ),
+        const HomeHeader(),
         
         Expanded(
           child: RefreshIndicator(
@@ -94,7 +90,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _buildAnnouncementsSection(announcementsState),
 
                 // Padding for floating navbar
-                SizedBox(height: 120.h),
+                SizedBox(height: 16.h),
               ],
             ),
           ),
@@ -118,7 +114,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             Text(
-              name.split(" ").take(2).join(" "),
+              name.split(" ").first,
               style: TextStyle(
                 fontSize: 22.sp,
                 fontWeight: FontWeight.bold,
@@ -140,6 +136,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildStatsCard(HomeState state) {
+    if (state.isLoading) {
+      return const HomeStatsSkeleton();
+    }
+
     int count = 0;
     if (state is HomeStateData) {
       count = state.dashboardResponse.childrenCount;
@@ -202,16 +202,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildChildrenSection(HomeState state, Child? selectedChild) {
     if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator());
+      return const HomeChildrenSectionSkeleton();
     }
 
     if (state.isError) {
-      return Center(child: Text(state.errorOrNull ?? 'Erreur'));
+      return VisionStateView(
+        icon: Icons.family_restroom_outlined,
+        title: 'Impossible de charger les enfants',
+        message: state.errorOrNull ?? 'Une erreur est survenue lors du chargement.',
+        actionLabel: 'Réessayer',
+        onAction: () => ref.read(homeStateProvider.notifier).fetchChildrenAndDashboard(),
+        accentColor: const Color(0xFFDC2626),
+        compact: true,
+      );
     }
 
     final data = state.dataOrNull;
     if (data == null || data.childrenResponse.children.isEmpty) {
-      return const Center(child: Text('Aucun enfant trouvé'));
+      return const VisionStateView(
+        icon: Icons.family_restroom_outlined,
+        title: 'Aucun enfant trouvé',
+        message: 'Aucun élève n’est actuellement rattaché à ce compte parent.',
+        compact: true,
+      );
     }
 
     return Column(
@@ -292,11 +305,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
         SizedBox(height: 12.h),
         if (state.isLoading)
-          const Center(child: CircularProgressIndicator())
+          const HomeAnnouncementsSectionSkeleton()
         else if (state.isError)
-          Center(child: Text(state.errorOrNull ?? 'Erreur lors du chargement des annonces'))
+          VisionStateView(
+            icon: Icons.campaign_outlined,
+            title: 'Annonces indisponibles',
+            message: state.errorOrNull ?? 'Impossible de récupérer les annonces pour le moment.',
+            actionLabel: 'Réessayer',
+            onAction: () => ref.read(announcementsStateProvider.notifier).fetchAnnouncements(),
+            accentColor: const Color(0xFFDC2626),
+            compact: true,
+          )
         else if (state.announcementsOrNull == null || state.announcementsOrNull!.isEmpty)
-          const Center(child: Text('Aucune annonce pour le moment'))
+          const VisionStateView(
+            icon: Icons.notifications_none_rounded,
+            title: 'Aucune annonce pour le moment',
+            message: 'Les nouvelles de l’école et les communications officielles apparaîtront ici.',
+            compact: true,
+          )
         else
           ...state.announcementsOrNull!.take(5).map((announcement) => _buildAnnouncementCard(announcement)),
       ],

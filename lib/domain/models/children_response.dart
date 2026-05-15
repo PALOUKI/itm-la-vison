@@ -1,11 +1,11 @@
 import 'package:vision/domain/models/child.dart';
 
 class ChildrenResponse {
-  final AcademicYear currentYear;
+  final AcademicYear? currentYear;
   final List<Child> children;
 
   ChildrenResponse({
-    required this.currentYear,
+    this.currentYear,
     required this.children,
   });
 
@@ -13,8 +13,9 @@ class ChildrenResponse {
     final childrenList = json['children'] as List<dynamic>? ?? [];
 
     return ChildrenResponse(
-      currentYear:
-          AcademicYear.fromJson(json['current_year'] as Map<String, dynamic>),
+      currentYear: json['current_year'] != null
+          ? AcademicYear.fromJson(json['current_year'] as Map<String, dynamic>)
+          : null,
       children: childrenList
           .map((e) => Child.fromJson(e as Map<String, dynamic>))
           .toList(),

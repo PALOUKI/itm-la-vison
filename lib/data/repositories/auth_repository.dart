@@ -1,7 +1,18 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vision/core/services/api_service.dart';
 import 'package:vision/core/services/local_storage_service.dart';
 import 'package:vision/domain/models/login_response.dart';
 import 'package:vision/domain/models/user.dart';
+
+final authRepositoryProvider = Provider<AuthRepository>((ref) {
+  final apiService = ref.watch(apiServiceProvider);
+  final storageService = ref.watch(localStorageServiceProvider);
+
+  return AuthRepository(
+    apiService: apiService,
+    storageService: storageService,
+  );
+});
 
 class AuthRepository {
   final ApiService _apiService;

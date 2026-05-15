@@ -1,4 +1,4 @@
-package com.vision.vision
+package com.itmlavision.vision
 
 import io.flutter.embedding.android.FlutterActivity
 

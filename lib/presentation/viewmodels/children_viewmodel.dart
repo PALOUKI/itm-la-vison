@@ -5,12 +5,6 @@ import 'package:vision/domain/models/child.dart';
 import 'package:vision/domain/models/children_response.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
 
-// Providers
-final childrenRepositoryProvider = Provider<ChildrenRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return ChildrenRepository(apiService: apiService);
-});
-
 // Children State Provider
 final childrenStateProvider =
     NotifierProvider<ChildrenNotifier, ChildrenState>(
@@ -49,8 +43,6 @@ class ChildrenNotifier extends Notifier<ChildrenState> {
     try {
       final response = await _repository.getChildren();
       state = ChildrenState.loaded(response);
-      
-      // ✅ Plus de sélection automatique ici
     } catch (e) {
       state = ChildrenState.error(e.toString());
     }
@@ -75,9 +67,23 @@ sealed class ChildrenState {
 
   ChildrenResponse? get dataOrNull =>
       this is ChildrenStateLoaded ? (this as ChildrenStateLoaded).data : null;
+      
+  List<Child>? get childrenOrNull =>
+      this is ChildrenStateLoaded ? (this as ChildrenStateLoaded).data.children : null;
 
   String? get errorOrNull =>
       this is ChildrenStateError ? (this as ChildrenStateError).message : null;
+
+  T when<T>({
+    required T Function() loading,
+    required T Function(ChildrenResponse data) loaded,
+    required T Function(String message) error,
+  }) {
+    if (this is ChildrenStateLoading) return loading();
+    if (this is ChildrenStateLoaded) return loaded((this as ChildrenStateLoaded).data);
+    if (this is ChildrenStateError) return error((this as ChildrenStateError).message);
+    throw Exception('Unknown state: $this');
+  }
 }
 
 class ChildrenStateLoading extends ChildrenState {
@@ -95,4 +101,3 @@ class ChildrenStateError extends ChildrenState {
 
   const ChildrenStateError(this.message);
 }
-

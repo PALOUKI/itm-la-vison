@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "974321846517",
+    "project_id": "itmapp-91130",
+    "storage_bucket": "itmapp-91130.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:974321846517:android:5c364952c29a6f92ee9dbc",
+        "android_client_info": {
+          "package_name": "com.itmlavision.vision"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAs4h81M9zc2m_KVJm6JxmU1WqLLy5NuGY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

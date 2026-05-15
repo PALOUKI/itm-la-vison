@@ -1,14 +1,21 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:vision/config/constants.dart';
 
+final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
+  return LocalStorageService();
+});
+
 class LocalStorageService {
   late Box<dynamic> _authBox;
+  late Box<dynamic> _onboardingBox;
   bool _isInitialized = false;
 
   Future<void> initialize() async {
     if (_isInitialized) return;
     await Hive.initFlutter();
     _authBox = await Hive.openBox(AppConstants.authBoxName);
+    _onboardingBox = await Hive.openBox(AppConstants.onboardingBoxName);
     _isInitialized = true;
   }
 
@@ -16,6 +23,17 @@ class LocalStorageService {
     if (!_isInitialized) {
       await initialize();
     }
+  }
+
+  // Onboarding Management
+  Future<void> setOnboardingCompleted(bool completed) async {
+    await _ensureInitialized();
+    await _onboardingBox.put(AppConstants.keyOnboardingCompleted, completed);
+  }
+
+  bool hasCompletedOnboarding() {
+    if (!_isInitialized) return false;
+    return _onboardingBox.get(AppConstants.keyOnboardingCompleted, defaultValue: false) as bool;
   }
 
   // Token Management
@@ -26,7 +44,6 @@ class LocalStorageService {
 
   String? getToken() {
     if (!_isInitialized) {
-      // Si non initialisé, retourner null pour éviter les erreurs
       return null;
     }
     return _authBox.get('auth_token') as String?;
@@ -44,7 +61,6 @@ class LocalStorageService {
     final data = _authBox.get('user_data');
     if (data == null) return null;
     
-    // Convertir explicitement en Map<String, dynamic>
     try {
       return Map<String, dynamic>.from(data as Map);
     } catch (e) {
@@ -61,5 +77,16 @@ class LocalStorageService {
   Future<void> clear() async {
     await _ensureInitialized();
     await _authBox.clear();
+  }
+
+  // Notification Preferences
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    await _ensureInitialized();
+    await _authBox.put('push_enabled', enabled);
+  }
+
+  bool isNotificationsEnabled() {
+    if (!_isInitialized) return true;
+    return _authBox.get('push_enabled', defaultValue: true) as bool;
   }
 }

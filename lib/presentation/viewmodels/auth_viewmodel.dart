@@ -4,26 +4,6 @@ import 'package:vision/core/services/local_storage_service.dart';
 import 'package:vision/data/repositories/auth_repository.dart';
 import 'package:vision/domain/models/user.dart';
 
-// Services Providers
-final apiServiceProvider = Provider<ApiService>((ref) {
-  return ApiService();
-});
-
-final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
-  return LocalStorageService();
-});
-
-// Repository Providers
-final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  final storageService = ref.watch(localStorageServiceProvider);
-
-  return AuthRepository(
-    apiService: apiService,
-    storageService: storageService,
-  );
-});
-
 // Auth State Provider using Notifier (Riverpod 3.x)
 final authStateProvider = NotifierProvider<AuthNotifier, AuthState>(
   () => AuthNotifier(),
@@ -83,6 +63,9 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       await _authRepository.logout();
       state = const AuthState.initial();
+      
+      // Force la réinitialisation de tous les providers dépendants pour éviter les fuites de données
+      ref.invalidateSelf();
     } catch (e) {
       state =  AuthState.error(e.toString());
     }

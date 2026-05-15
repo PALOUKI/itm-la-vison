@@ -2,12 +2,12 @@ class AppConstants {
 
   // Storage Keys (Hive)
   static const String settingsBoxName = 'settings';
-  //static const String onboardingBoxName = 'onboarding';
+  static const String onboardingBoxName = 'onboarding';
   static const String authBoxName = 'auth';
 
   // Settings Keys
   static const String keyThemeMode = 'theme_mode';
-  //static const String keyOnboardingCompleted = 'onboarding_completed';
+  static const String keyOnboardingCompleted = 'onboarding_completed';
 
   // UI Constants
   static const double largeTouchTarget = 56.0;
@@ -27,6 +27,11 @@ class AppConstants {
   static const String appDescription = 'A mobile application for parents to handle their children.';
   static const String appLogoPath = 'assets/images/logo.png';
   static const String noInternetImagePath = 'assets/images/no-internet-connection.png';
+  
+  // Onboarding Images
+  static const String onboardingImage1 = 'assets/images/onBoarding.png';
+  static const String onboardingImage2 = 'assets/images/picture.png';
+  static const String onboardingImage3 = 'assets/images/logo.png';
 
   // Onboarding Lottie Assets
 
@@ -38,6 +43,6 @@ class AppConstants {
   static const String apiBaseUrl = 'https://itmlavision.net/api/v1';
 
   // Storage base URL — utilisé pour les images/fichiers (sans /api/v1)
-  static const String storageBaseUrl = 'https://itmlavision.net/storage';
+  static const String storageBaseUrl = 'http://158.220.102.41:9000/itm-school';
 
 }

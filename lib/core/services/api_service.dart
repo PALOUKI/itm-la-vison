@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vision/config/constants.dart';
 import 'package:vision/core/services/api_endpoints.dart';
 import 'package:vision/domain/models/child.dart';
@@ -14,18 +17,15 @@ import 'package:vision/domain/models/message.dart';
 import 'package:vision/domain/models/user.dart';
 import 'package:vision/domain/models/common_models.dart';
 
+final apiServiceProvider = Provider<ApiService>((ref) {
+  return ApiService();
+});
+
 class ApiService {
   late Dio _dio;
   String? _authToken;
 
-  // Singleton pattern
-  static final ApiService _instance = ApiService._internal();
-
-  factory ApiService() {
-    return _instance;
-  }
-
-  ApiService._internal() {
+  ApiService() {
     _dio = Dio(
       BaseOptions(
         baseUrl: AppConstants.apiBaseUrl,
@@ -40,16 +40,50 @@ class ApiService {
       ),
     );
 
-    // Ajouter un interceptor pour les logs
+    // Interceptor pour le rafraîchissement automatique du token
     _dio.interceptors.add(
-      LogInterceptor(
-        requestBody: true,
-        responseBody: true,
-        error: true,
-        requestHeader: true,
-        responseHeader: false,
+      InterceptorsWrapper(
+        onError: (DioException e, handler) async {
+          // Si on reçoit un 401 et qu'on n'est pas déjà sur l'endpoint de refresh ou de login
+          if (e.response?.statusCode == 401 && 
+              _authToken != null &&
+              e.requestOptions.path != ApiEndpoints.refreshToken &&
+              e.requestOptions.path != ApiEndpoints.login) {
+            
+            try {
+              // Tentative de rafraîchissement du token
+              final newToken = await refreshToken();
+              
+              // Mettre à jour les headers de la requête originale
+              final options = e.requestOptions;
+              options.headers['Authorization'] = 'Bearer $newToken';
+              
+              // Relancer la requête originale
+              final response = await _dio.fetch(options);
+              return handler.resolve(response);
+            } catch (refreshError) {
+              // Si le refresh échoue, on continue avec l'erreur originale
+              return handler.next(e);
+            }
+          }
+          return handler.next(e);
+        },
       ),
     );
+
+    // Ajouter un interceptor pour les logs seulement en mode debug
+    if (AppConstants.apiBaseUrl.contains('localhost') || 
+        const bool.fromEnvironment('dart.vm.product') == false) {
+      _dio.interceptors.add(
+        LogInterceptor(
+          requestBody: true,
+          responseBody: true,
+          error: true,
+          requestHeader: true,
+          responseHeader: false,
+        ),
+      );
+    }
   }
 
   /// Définir le token d'authentification
@@ -67,18 +101,35 @@ class ApiService {
     _dio.options.headers.remove('Authorization');
   }
 
+  Future<T> _runWithoutAuthorization<T>(Future<T> Function() action) async {
+    final previousAuthorization = _dio.options.headers['Authorization'];
+    _dio.options.headers.remove('Authorization');
+
+    try {
+      return await action();
+    } finally {
+      if (_authToken != null) {
+        _dio.options.headers['Authorization'] = 'Bearer $_authToken';
+      } else if (previousAuthorization != null) {
+        _dio.options.headers['Authorization'] = previousAuthorization;
+      }
+    }
+  }
+
   /// Login endpoint
   Future<LoginResponse> login({
     required String email,
     required String password,
   }) async {
     try {
-      final response = await _dio.post(
-        ApiEndpoints.login,
-        data: {
-          'email': email,
-          'password': password,
-        },
+      final response = await _runWithoutAuthorization(
+        () => _dio.post(
+          ApiEndpoints.login,
+          data: {
+            'email': email,
+            'password': password,
+          },
+        ),
       );
 
       if (response.statusCode == 200) {
@@ -132,17 +183,10 @@ class ApiService {
           final children = responseData
               .map((e) => Child.fromJson(e as Map<String, dynamic>))
               .toList();
-          // The API response is a list of children, so we create a dummy AcademicYear
-          // A proper solution would be to get the current academic year from another endpoint
-          final currentYear = children_response.AcademicYear(
-            id: 0,
-            uuid: '',
-            name: '2023-2024', // Dummy data
-            startDate: DateTime.now(),
-            endDate: DateTime.now(),
-            isCurrent: true,
-          );
-          return children_response.ChildrenResponse(currentYear: currentYear, children: children);
+          
+          return children_response.ChildrenResponse(children: children);
+        } else if (response.data is Map<String, dynamic>) {
+          return children_response.ChildrenResponse.fromJson(response.data);
         } else {
           throw Exception('Invalid data format received from server');
         }
@@ -200,24 +244,11 @@ class ApiService {
   }
 
   /// Get Messages
-  Future<MessagingResponse> getMessages() async {
+  Future<dynamic> getMessages() async {
     try {
       final response = await _dio.get(ApiEndpoints.messages);
       if (response.statusCode == 200) {
-        final data = response.data['data'];
-        // Handle both Map and List responses dynamically
-        if (data is Map<String, dynamic>) {
-          return MessagingResponse.fromJson(data);
-        } else if (data is List<dynamic>) {
-          // If it's a list, return empty response or handle as needed
-          return MessagingResponse(
-            sent: [],
-            received: [],
-            teachers: [],
-          );
-        } else {
-          throw Exception('Invalid messages data format');
-        }
+        return response.data['data'];
       } else {
         throw Exception('Failed to fetch messages');
       }
@@ -274,8 +305,8 @@ class ApiService {
         'subject': subject,
         'body': body,
       };
-      if (teacherId != null) data['teacher_id'] = teacherId;
-      if (studentId != null) data['student_id'] = studentId;
+      if (teacherId != null) data['teacher_id'] = teacherId.toString();
+      if (studentId != null) data['student_id'] = studentId.toString();
 
       await _dio.post(ApiEndpoints.messages, data: data);
     } on DioException catch (e) {
@@ -338,6 +369,19 @@ class ApiService {
     }
   }
 
+  /// Generic PUT request
+  Future<Response<dynamic>> put(
+    String path,
+    dynamic data,
+  ) async {
+    try {
+      final response = await _dio.put(path, data: data);
+      return response;
+    } on DioException catch (e) {
+      throw _handleDioException(e);
+    }
+  }
+
   /// Get Attendances for a student
   Future<attendance_model.AttendanceResponse> getAttendances(
     String studentUuid, {
@@ -357,8 +401,7 @@ class ApiService {
       );
 
       if (response.statusCode == 200) {
-        final dataList = response.data['data'] as List<dynamic>;
-        return attendance_model.AttendanceResponse.fromJsonList(dataList);
+        return attendance_model.AttendanceResponse.fromJson(response.data as Map<String, dynamic>);
       } else {
         throw Exception('Failed to fetch attendances with status code ${response.statusCode}');
       }
@@ -527,34 +570,50 @@ class ApiService {
 
   /// Gestion des exceptions Dio
   String _handleDioException(DioException e) {
-    String message = 'An error occurred';
+    String message = 'Une erreur est survenue.';
 
     if (e.type == DioExceptionType.connectionTimeout) {
-      message = 'Connection timeout. Please check your internet connection.';
+      message = 'Connexion trop lente. Vérifiez votre accès internet puis réessayez.';
     } else if (e.type == DioExceptionType.receiveTimeout) {
-      message = 'Server response timeout. Please try again.';
+      message = 'Le serveur met trop de temps à répondre. Veuillez réessayer.';
     } else if (e.type == DioExceptionType.badResponse) {
       final statusCode = e.response?.statusCode;
       final data = e.response?.data;
 
       if (statusCode == 401) {
-        message = 'Unauthorized. Please check your credentials.';
+        message = 'Identifiants invalides. Vérifiez vos informations de connexion.';
       } else if (statusCode == 422) {
         // Erreur de validation
         if (data is Map && data.containsKey('errors')) {
           message = (data['errors'] as Map).values.first.toString();
         } else {
-          message = 'Validation error. Please check your input.';
+          message = 'Certaines informations saisies sont invalides.';
         }
       } else if (statusCode == 404) {
-        message = 'Resource not found.';
+        message = 'Ressource introuvable.';
       } else if (statusCode == 500) {
-        message = 'Server error. Please try again later.';
+        message = 'Erreur serveur. Veuillez réessayer plus tard.';
       } else {
-        message = data?['message'] ?? data?['error'] ?? 'An error occurred';
+        message = data?['message'] ?? data?['error'] ?? 'Une erreur est survenue.';
       }
-    } else if (e.type == DioExceptionType.unknown) {
-      message = 'Network error. Please check your connection.';
+    } else if (e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.unknown) {
+      final error = e.error;
+
+      if (error is SocketException) {
+        final socketMessage = error.message.toLowerCase();
+
+        if (socketMessage.contains('failed host lookup')) {
+          message =
+              'Impossible de joindre le serveur. Vérifiez votre connexion internet ou réessayez plus tard.';
+        } else {
+          message =
+              'Aucune connexion internet détectée ou réseau instable. Vérifiez votre connexion puis réessayez.';
+        }
+      } else {
+        message =
+            'Impossible de contacter le serveur. Vérifiez votre connexion puis réessayez.';
+      }
     }
 
     return message;
@@ -586,4 +645,3 @@ class ApiService {
     }
   }
 }
-

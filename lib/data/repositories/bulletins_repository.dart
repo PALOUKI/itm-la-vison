@@ -1,6 +1,13 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vision/core/services/api_service.dart';
 import 'package:vision/domain/models/bulletins.dart';
 import 'package:vision/domain/models/common_models.dart';
+import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
+
+final bulletinsRepositoryProvider = Provider<BulletinsRepository>((ref) {
+  final apiService = ref.watch(apiServiceProvider);
+  return BulletinsRepository(apiService: apiService);
+});
 
 class BulletinsRepository {
   final ApiService apiService;

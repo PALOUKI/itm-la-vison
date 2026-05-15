@@ -6,6 +6,7 @@ import 'package:vision/config/constants.dart';
 import 'package:vision/domain/models/message.dart';
 import 'package:vision/presentation/viewmodels/child_detail_viewmodel.dart';
 import 'package:vision/presentation/viewmodels/messages_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 class MessagesScreen extends ConsumerStatefulWidget {
   final String childUuid;
@@ -49,6 +50,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         title: Text(
           'Communication',
           style: TextStyle(
@@ -65,7 +67,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       body: _buildBody(state),
       floatingActionButton: FloatingActionButton(
         onPressed: _openComposeSheet,
-        backgroundColor: const Color(0xFF1c3672),
+        backgroundColor: const Color(0xFF1e3a8a),
         elevation: 4,
         shape: const CircleBorder(),
         child: const Icon(Icons.edit, color: Colors.white, size: 24),
@@ -83,42 +85,52 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(state.errorOrNull ?? 'Erreur'),
-            TextButton(
+            Icon(Icons.error_outline, size: 48.sp, color: Colors.red.shade300),
+            SizedBox(height: 16.h),
+            Text(
+              state.errorOrNull ?? 'Erreur lors du chargement',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+            ),
+            SizedBox(height: 16.h),
+            ElevatedButton(
               onPressed: () => ref.read(messagesStateProvider.notifier).fetchMessages(),
-              child: const Text('Réessayer'),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1e3a8a)),
+              child: const Text('Réessayer', style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
       );
     }
 
-    final data = state.dataOrNull;
-    if (data == null) return const Center(child: Text('Aucun message trouvé.'));
+    final response = state.responseOrNull;
+    if (response == null) {
+      return const Center(child: Text('Aucun message trouvé.'));
+    }
 
     // Combiner envoyés et reçus selon le filtre
     List<Message> displayMessages;
     if (_selectedFilterIndex == 1) {
-      displayMessages = data.response.sent;
+      displayMessages = response.sent;
     } else if (_selectedFilterIndex == 2) {
-      displayMessages = data.response.received;
+      displayMessages = response.received;
     } else {
-      displayMessages = [...data.response.received, ...data.response.sent];
+      displayMessages = [...response.received, ...response.sent];
       displayMessages.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     }
 
-    // Filtrer par recherche
+    // Appliquer la recherche
     if (_searchController.text.isNotEmpty) {
       final query = _searchController.text.toLowerCase();
-      displayMessages = displayMessages.where((m) =>
-        (m.sender?.name ?? '').toLowerCase().contains(query) ||
-        m.subject.toLowerCase().contains(query)
-      ).toList();
+      displayMessages = displayMessages.where((m) {
+        final contact = m.sender?.role == 'parent' ? m.receiver : m.sender;
+        return (contact?.name ?? '').toLowerCase().contains(query) ||
+               m.subject.toLowerCase().contains(query);
+      }).toList();
     }
 
     return Column(
       children: [
-        // Search bar
+        // Search bar (Restaurée)
         Padding(
           padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 12.h),
           child: Container(
@@ -126,25 +138,32 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
             decoration: BoxDecoration(
               color: Colors.grey.shade50,
               borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: Colors.grey.shade100),
             ),
             child: TextField(
               controller: _searchController,
               onChanged: (val) => setState(() {}),
+              textAlignVertical: TextAlignVertical.center,
               decoration: InputDecoration(
-                hintText: 'Rechercher...',
-                hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14.sp),
-                prefixIcon: Icon(Icons.search, color: Colors.grey.shade500, size: 20.sp),
+                hintText: 'Rechercher une conversation...',
+                hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 13.sp),
+                prefixIcon: Icon(Icons.search, color: Colors.grey.shade400, size: 18.sp),
                 border: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(vertical: 12.h),
+                contentPadding: EdgeInsets.only(right: 16.w),
               ),
             ),
           ),
         ),
 
         // Filters
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16.w),
+        Container(
+          padding: EdgeInsets.only(bottom: 12.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+          ),
           child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
               _filters.length,
               (index) => Padding(
@@ -159,22 +178,31 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
           ),
         ),
 
-        SizedBox(height: 12.h),
-
         // List
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => ref.read(messagesStateProvider.notifier).fetchMessages(),
             child: displayMessages.isEmpty
-              ? ListView(children: const [
-                  Center(child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text('Aucun message'),
-                  ))
-                ])
+              ? ListView(
+                  children: [
+                    SizedBox(height: 100.h),
+                    Center(
+                      child: Column(
+                        children: [
+                          Icon(Icons.chat_bubble_outline, size: 64.sp, color: Colors.grey.shade300),
+                          SizedBox(height: 16.h),
+                          Text(
+                            'Aucun message trouvé',
+                            style: TextStyle(color: Colors.grey.shade500, fontSize: 14.sp),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
               : ListView.separated(
                   itemCount: displayMessages.length,
-                  padding: EdgeInsets.only(bottom: 96.h),
+                  padding: EdgeInsets.symmetric(vertical: 8.h),
                   separatorBuilder: (_, __) => Divider(height: 1, color: Colors.grey.shade100),
                   itemBuilder: (_, index) => _buildMessageItem(displayMessages[index]),
                 ),
@@ -188,16 +216,16 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF1c3672) : Colors.grey.shade50,
+          color: isSelected ? const Color(0xFF1e3a8a) : Colors.grey.shade100,
           borderRadius: BorderRadius.circular(20.r),
         ),
         child: Text(
           title,
           style: TextStyle(
-            color: isSelected ? Colors.white : Colors.black87,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            color: isSelected ? Colors.white : Colors.grey.shade600,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
             fontSize: 12.sp,
           ),
         ),
@@ -208,50 +236,39 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   Widget _buildMessageItem(Message msg) {
     final isSent = msg.sender?.role == 'parent';
     final contact = isSent ? msg.receiver : msg.sender;
-    final contactName = contact?.name ?? 'Inconnu';
-    final contactAvatar = contact?.avatar;
-    final isOnline = contact?.isActive ?? false;
+    final contactName = contact?.name ?? 'Établissement';
+    
+    String initials = '';
+    if (contactName.isNotEmpty) {
+      final names = contactName.trim().split(' ');
+      if (names.length >= 2) {
+        initials = '${names[0][0]}${names[names.length - 1][0]}';
+      } else if (names.isNotEmpty && names[0].isNotEmpty) {
+        initials = names[0][0];
+      }
+    }
 
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        _showMessageDetail(msg, contactName);
+      },
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 24.r,
-                  backgroundColor: const Color(0xFFE0E7FF),
-                  backgroundImage: contactAvatar != null
-                      ? NetworkImage('${AppConstants.storageBaseUrl}/$contactAvatar')
-                      : null,
-                  child: contactAvatar == null
-                      ? Text(
-                          contactName.isNotEmpty ? contactName[0].toUpperCase() : '?',
-                          style: TextStyle(
-                            color: const Color(0xFF1c3672),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16.sp,
-                          ),
-                        )
-                      : null,
-                ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
-                  child: Container(
-                    width: 12.w,
-                    height: 12.w,
-                    decoration: BoxDecoration(
-                      color: isOnline ? const Color(0xFF10B981) : Colors.grey.shade300,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                  ),
-                ),
-              ],
+            CircleAvatar(
+              radius: 24.r,
+              backgroundColor: const Color(0xFF1e3a8a).withOpacity(0.1),
+              backgroundImage: contact?.avatar != null
+                  ? NetworkImage('${AppConstants.storageBaseUrl}/${contact!.avatar}')
+                  : null,
+              child: contact?.avatar == null
+                  ? Text(
+                      initials.toUpperCase(),
+                      style: TextStyle(color: const Color(0xFF1e3a8a), fontWeight: FontWeight.bold, fontSize: 16.sp),
+                    )
+                  : null,
             ),
             SizedBox(width: 12.w),
             Expanded(
@@ -261,37 +278,28 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Flexible(
-                        child: Text(
-                          contactName,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: Colors.black87),
-                        ),
+                      Text(
+                        contactName,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.sp, color: const Color(0xFF1E293B)),
                       ),
                       Text(
-                        DateFormat('dd MMM', 'fr_FR').format(msg.createdAt),
+                        DateFormat('dd/MM', 'fr_FR').format(msg.createdAt),
                         style: TextStyle(fontSize: 10.sp, color: Colors.grey.shade500),
                       ),
                     ],
                   ),
-                  SizedBox(height: 2.h),
-                  Row(
-                    children: [
-                      if (isSent)
-                        Padding(
-                          padding: EdgeInsets.only(right: 4.w),
-                          child: Icon(Icons.send_outlined, size: 11.sp, color: Colors.grey.shade400),
-                        ),
-                      Expanded(
-                        child: Text(
-                          msg.subject,
-                          style: TextStyle(fontSize: 12.sp, color: const Color(0xFF1c3672), fontWeight: FontWeight.w500),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
                   SizedBox(height: 4.h),
+                  Text(
+                    msg.subject,
+                    style: TextStyle(
+                      fontSize: 13.sp, 
+                      fontWeight: isSent ? FontWeight.normal : (msg.isRead ? FontWeight.normal : FontWeight.bold),
+                      color: const Color(0xFF1e3a8a)
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 2.h),
                   Text(
                     msg.body,
                     maxLines: 1,
@@ -306,9 +314,34 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       ),
     );
   }
+
+  void _showMessageDetail(Message msg, String contactName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(msg.subject, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold)),
+            SizedBox(height: 4.h),
+            Text('De: $contactName', style: TextStyle(fontSize: 12.sp, color: Colors.grey)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Text(msg.body, style: TextStyle(fontSize: 14.sp, height: 1.5, color: const Color(0xFF334155))),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fermer', style: TextStyle(color: Color(0xFF1e3a8a), fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// Bottom sheet pour composer un message
 class _ComposeMessageSheet extends ConsumerStatefulWidget {
   final String childUuid;
   final VoidCallback onSent;
@@ -319,7 +352,7 @@ class _ComposeMessageSheet extends ConsumerStatefulWidget {
 }
 
 class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
-  String _recipientType = 'administration'; // 'teacher' or 'administration'
+  String _recipientType = 'administration';
   Teacher? _selectedTeacher;
   final _subjectCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
@@ -334,15 +367,11 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
 
   Future<void> _send() async {
     if (_subjectCtrl.text.trim().isEmpty || _bodyCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez remplir tous les champs.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez remplir tous les champs.')));
       return;
     }
     if (_recipientType == 'teacher' && _selectedTeacher == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Veuillez sélectionner un professeur.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Veuillez sélectionner un professeur.')));
       return;
     }
 
@@ -350,7 +379,6 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
     try {
       final notifier = ref.read(messagesStateProvider.notifier);
       if (_recipientType == 'teacher') {
-        // Récupérer le child.id (entier) depuis le provider de détail enfant
         final childState = ref.read(childDetailProvider(widget.childUuid));
         final studentId = childState.value?.id ?? 0;
         await notifier.sendToTeacher(
@@ -366,20 +394,16 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
         );
       }
       if (mounted) {
-        Navigator.of(context).pop();
+        Navigator.pop(context);
         widget.onSent();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Message envoyé avec succès !'),
-            backgroundColor: Color(0xFF10B981),
-          ),
+          const SnackBar(content: Text('Message envoyé avec succès !'), backgroundColor: Color(0xFF10B981)),
         );
       }
     } catch (e) {
       setState(() => _isSending = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erreur : $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -388,49 +412,21 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
     final teachersAsync = ref.watch(childTeachersProvider(widget.childUuid));
 
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
-      ),
-      padding: EdgeInsets.only(
-        left: 20.w,
-        right: 20.w,
-        top: 20.h,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24.h,
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24.r))),
+      padding: EdgeInsets.only(left: 20.w, right: 20.w, top: 20.h, bottom: MediaQuery.of(context).viewInsets.bottom + 24.h),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2.r),
-                ),
-              ),
-            ),
+            Center(child: Container(width: 40.w, height: 4.h, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2.r)))),
             SizedBox(height: 20.h),
-
-            // Title
-            Text(
-              'Nouveau Message',
-              style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B)),
-            ),
+            Text('Nouveau Message', style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold, color: const Color(0xFF1E293B))),
             SizedBox(height: 20.h),
-
-            // Recipient type toggle
             Text('Destinataire', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
             SizedBox(height: 8.h),
             Container(
               padding: EdgeInsets.all(4.w),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12.r),
-              ),
+              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12.r)),
               child: Row(
                 children: [
                   Expanded(child: _buildToggleBtn('Professeur', 'teacher')),
@@ -439,111 +435,71 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
               ),
             ),
             SizedBox(height: 16.h),
-
-            // Teacher selector (visible only if teacher)
             if (_recipientType == 'teacher') ...[
               Text('Sélectionner un professeur', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
               SizedBox(height: 8.h),
               teachersAsync.when(
-                data: (teachers) => teachers.isEmpty
-                  ? Text('Aucun professeur trouvé.', style: TextStyle(color: Colors.grey, fontSize: 13.sp))
-                  : Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12.w),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade200),
-                        borderRadius: BorderRadius.circular(12.r),
-                        color: Colors.grey.shade50,
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<Teacher>(
-                          isExpanded: true,
-                          hint: Text('Choisir un professeur', style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade500)),
-                          value: _selectedTeacher,
-                          items: teachers.map((t) => DropdownMenuItem(
-                            value: t,
-                            child: Text(t.fullName, style: TextStyle(fontSize: 14.sp)),
-                          )).toList(),
-                          onChanged: (t) => setState(() => _selectedTeacher = t),
-                        ),
-                      ),
+                data: (teachers) => Container(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(12.r), color: Colors.grey.shade50),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<Teacher>(
+                      isExpanded: true,
+                      hint: Text('Choisir un professeur', style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade400)),
+                      value: _selectedTeacher,
+                      items: teachers.map((t) => DropdownMenuItem(value: t, child: Text(t.fullName, style: TextStyle(fontSize: 14.sp)))).toList(),
+                      onChanged: (t) => setState(() => _selectedTeacher = t),
                     ),
+                  ),
+                ),
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('Impossible de charger les professeurs.', style: TextStyle(color: Colors.red, fontSize: 13.sp)),
+                error: (e, _) => Text('Erreur de chargement.', style: TextStyle(color: Colors.red, fontSize: 12.sp)),
               ),
               SizedBox(height: 16.h),
             ],
-
-            // Subject
             Text('Objet', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
             SizedBox(height: 8.h),
             TextField(
               controller: _subjectCtrl,
+              style: TextStyle(fontSize: 14.sp, color: const Color(0xFF1E293B)),
               decoration: InputDecoration(
-                hintText: 'Ex: Demande de rendez-vous',
+                hintText: 'Sujet du message',
                 hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14.sp),
                 filled: true,
                 fillColor: Colors.grey.shade50,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: const BorderSide(color: Color(0xFF1c3672), width: 1.5),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: Colors.grey.shade200)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: Colors.grey.shade200)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: const BorderSide(color: Color(0xFF1e3a8a), width: 1.5)),
                 contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
               ),
             ),
             SizedBox(height: 16.h),
-
-            // Body
             Text('Message', style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
             SizedBox(height: 8.h),
             TextField(
               controller: _bodyCtrl,
               maxLines: 5,
+              style: TextStyle(fontSize: 14.sp, color: const Color(0xFF1E293B)),
               decoration: InputDecoration(
                 hintText: 'Écrivez votre message ici...',
                 hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14.sp),
                 filled: true,
                 fillColor: Colors.grey.shade50,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: BorderSide(color: Colors.grey.shade200),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                  borderSide: const BorderSide(color: Color(0xFF1c3672), width: 1.5),
-                ),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: Colors.grey.shade200)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: Colors.grey.shade200)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: const BorderSide(color: Color(0xFF1e3a8a), width: 1.5)),
                 contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
               ),
             ),
             SizedBox(height: 24.h),
-
-            // Send button
             SizedBox(
               width: double.infinity,
               height: 52.h,
               child: ElevatedButton.icon(
                 onPressed: _isSending ? null : _send,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1c3672),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
-                  elevation: 0,
-                ),
-                icon: _isSending
-                    ? SizedBox(width: 18.w, height: 18.w, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Icon(Icons.send_rounded, size: 20.sp),
-                label: Text(_isSending ? 'Envoi...' : 'Envoyer le message', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600)),
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1e3a8a), foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)), elevation: 0),
+                icon: _isSending ? SizedBox(width: 18.w, height: 18.w, child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded),
+                label: Text(_isSending ? 'Envoi...' : 'Envoyer le message', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -555,27 +511,12 @@ class _ComposeMessageSheetState extends ConsumerState<_ComposeMessageSheet> {
   Widget _buildToggleBtn(String label, String value) {
     final isActive = _recipientType == value;
     return GestureDetector(
-      onTap: () => setState(() {
-        _recipientType = value;
-        _selectedTeacher = null;
-      }),
+      onTap: () => setState(() { _recipientType = value; _selectedTeacher = null; }),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: EdgeInsets.symmetric(vertical: 10.h),
-        decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF1c3672) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10.r),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isActive ? Colors.white : Colors.grey.shade600,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              fontSize: 13.sp,
-            ),
-          ),
-        ),
+        decoration: BoxDecoration(color: isActive ? const Color(0xFF1e3a8a) : Colors.transparent, borderRadius: BorderRadius.circular(10.r)),
+        child: Center(child: Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.grey.shade600, fontWeight: isActive ? FontWeight.bold : FontWeight.normal, fontSize: 13.sp))),
       ),
     );
   }

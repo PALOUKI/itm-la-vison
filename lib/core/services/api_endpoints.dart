@@ -66,6 +66,13 @@ class ApiEndpoints {
   static const String getFinances = '/parent/finances';
 
   // ============================================
+  // NOTIFICATION ENDPOINTS
+  // ============================================
+  static const String getNotifications = '/parent/notifications';
+  static String markNotificationRead(String uuid) => '/parent/notifications/$uuid/read';
+  static const String updateFcmToken = '/parent/fcm-token';
+
+  // ============================================
   // SUPPORT ENDPOINTS
   // ============================================
   static const String support = '/parent/support';

@@ -9,20 +9,23 @@ final profileStateProvider = NotifierProvider<ProfileNotifier, ProfileState>(
 class ProfileNotifier extends Notifier<ProfileState> {
   @override
   ProfileState build() {
-    // L'état initial sera chargé dans fetchProfile
-    Future.microtask(() => fetchProfile());
-    return const ProfileState.loading();
+    // On écoute l'état d'authentification. 
+    // Si l'utilisateur change ou se déconnecte, ce provider se reconstruira.
+    final authState = ref.watch(authStateProvider);
+
+    if (authState.isAuthenticated && authState.user != null) {
+      return ProfileState.data(authState.user!);
+    } else if (authState is AuthStateLoading) {
+      return const ProfileState.loading();
+    } else {
+      return const ProfileState.error("Utilisateur non authentifié.");
+    }
   }
 
   Future<void> fetchProfile() async {
-    state = const ProfileState.loading();
-    final authState = ref.read(authStateProvider);
-
-    if (authState.isAuthenticated && authState.user != null) {
-      state = ProfileState.data(authState.user!);
-    } else {
-      state = const ProfileState.error("Utilisateur non authentifié.");
-    }
+    // Cette méthode peut rester pour forcer un rafraîchissement si nécessaire,
+    // mais le build() gère déjà la réactivité.
+    ref.invalidateSelf();
   }
 }
 

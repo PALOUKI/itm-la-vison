@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import '../viewmodels/navigation_viewmodel.dart';
+import '../../core/services/notification_service.dart';
 
-class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
+class CustomAppBar extends ConsumerWidget implements PreferredSizeWidget {
   final String title;
   final bool showBackButton;
   final VoidCallback? onNotificationTap;
@@ -17,7 +20,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return SafeArea(
       child: Container(
         height: 60.h,
@@ -49,7 +52,7 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
                 },
               )
             else
-              SizedBox(width: 40.w), // Pour garder le titre centré
+              const SizedBox(width: 48),
 
             // Titre centré
             Expanded(
@@ -64,36 +67,60 @@ class CustomAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ),
 
-            // Bouton Notification
-            /*
-            Stack(
-              alignment: Alignment.topRight,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    Icons.notifications_none,
-                    size: 24.sp,
-                    color: Colors.black87,
-                  ),
-                  onPressed: onNotificationTap ?? () {},
-                ),
-                if (hasNotification)
-                  Positioned(
-                    top: 10,
-                    right: 12,
-                    child: Container(
-                      width: 8.w,
-                      height: 8.w,
-                      decoration: const BoxDecoration(
-                        color: Colors.redAccent,
-                        shape: BoxShape.circle,
+            // Bouton Notification avec badge dynamique (affiché seulement si hasNotification est vrai)
+            if (hasNotification)
+              GestureDetector(
+                onTap: () {
+                  ref.read(navigationProvider.notifier).goToTab(2);
+                },
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        Icons.notifications_none,
+                        size: 24.sp,
+                        color: Colors.black87,
                       ),
+                      onPressed: () {
+                        ref.read(navigationProvider.notifier).goToTab(2);
+                      },
                     ),
-                  ),
-              ],
-            ),
-
-             */
+                    ref.watch(unreadNotificationsCountProvider).when(
+                      data: (count) => count > 0
+                          ? Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(2),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 16,
+                                  minHeight: 16,
+                                ),
+                                child: Text(
+                                  count > 9 ? '9+' : '$count',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              )
+            else
+              const SizedBox(width: 48), // Espaceur pour garder le titre centré
           ],
         ),
       ),

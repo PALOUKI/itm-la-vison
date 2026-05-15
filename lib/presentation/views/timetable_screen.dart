@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:vision/domain/models/timetable.dart';
 import 'package:vision/presentation/viewmodels/timetable_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 import '../../config/themes/app_colors.dart';
 
@@ -48,19 +49,14 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
       ),
       body: timetableState.when(
         data: (timetable) => _buildContent(context, timetable),
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a))),
-        error: (err, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Erreur: $err', style: TextStyle(fontSize: 14.sp, color: Colors.red)),
-              SizedBox(height: 16.h),
-              TextButton(
-                onPressed: () => ref.refresh(timetableProvider(widget.childUuid)),
-                child: const Text("Réessayer"),
-              )
-            ],
-          ),
+        loading: () => const TimetableLoadingView(),
+        error: (err, stack) => VisionStateView(
+          icon: Icons.calendar_month_outlined,
+          title: 'Emploi du temps indisponible',
+          message: err.toString(),
+          actionLabel: 'Réessayer',
+          onAction: () => ref.refresh(timetableProvider(widget.childUuid)),
+          accentColor: const Color(0xFFDC2626),
         ),
       ),
     );
@@ -69,11 +65,10 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   Widget _buildContent(BuildContext context, TimetableResponse timetable) {
     // Get first and last date from timetable items to determine week range
     if (timetable.items.isEmpty) {
-      return Center(
-        child: Text(
-          'Aucun emploi du temps disponible',
-          style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
-        ),
+      return const VisionStateView(
+        icon: Icons.calendar_view_week_outlined,
+        title: 'Aucun emploi du temps disponible',
+        message: 'Le planning des cours sera affiché ici dès sa publication.',
       );
     }
 
@@ -83,11 +78,10 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     // Trouver la première et dernière date pour déterminer la semaine
     final allDatesWithCourses = itemsByDate.keys.toList()..sort();
     if (allDatesWithCourses.isEmpty) {
-      return Center(
-        child: Text(
-          'Aucun emploi du temps disponible',
-          style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
-        ),
+      return const VisionStateView(
+        icon: Icons.calendar_view_week_outlined,
+        title: 'Aucun emploi du temps disponible',
+        message: 'Le planning hebdomadaire n’est pas encore disponible pour cette période.',
       );
     }
 
@@ -121,15 +115,13 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           // Timetable content - courses for the selected day
           if (itemsForSelectedDate.isEmpty)
             Padding(
-              padding: EdgeInsets.all(16.w),
-              child: Center(
-                child: Text(
-                  'Aucun cours ce jour',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
+              padding: EdgeInsets.symmetric(vertical: 40.h, horizontal: 20.w),
+              child: VisionStateView(
+                icon: Icons.event_available_outlined,
+                title: 'Aucun cours ce jour',
+                message: 'Profitez de ce temps libre pour réviser ou vous reposer !',
+                compact: true,
+                accentColor: Colors.grey.shade400,
               ),
             )
           else
@@ -148,7 +140,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     return Container(
       //margin: EdgeInsets.symmetric(horizontal: 16.w),
       padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
         //borderRadius: BorderRadius.circular(12.r),
       ),
@@ -192,7 +184,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                    color: const Color(0xFF10B981).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(20.r),
                   ),
                   child: Row(
@@ -277,8 +269,36 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     );
   }
 
+  Color _getColorForSubject(String code, String name) {
+    final String cleanCode = code.toUpperCase();
+    
+    // Definitive colors for common subjects
+    if (cleanCode.contains('MATH')) return const Color(0xFF3B82F6); // Blue
+    if (cleanCode.contains('PC') || cleanCode.contains('PHYS')) return const Color(0xFFEF4444); // Red
+    if (cleanCode.contains('SVT') || cleanCode.contains('BIO')) return const Color(0xFF10B981); // Green
+    if (cleanCode.contains('HG') || cleanCode.contains('HIST') || cleanCode.contains('GEO')) return const Color(0xFFF59E0B); // Amber
+    if (cleanCode.contains('FR') || cleanCode.contains('LITT')) return const Color(0xFFEC4899); // Pink
+    if (cleanCode.contains('ANG') || cleanCode.contains('ENG')) return const Color(0xFF06B6D4); // Cyan
+    if (cleanCode.contains('PHIL')) return const Color(0xFF8B5CF6); // Purple
+    if (cleanCode.contains('EPS') || cleanCode.contains('SPORT')) return const Color(0xFF6366F1); // Indigo
+    if (cleanCode.contains('PAUSE') || cleanCode.contains('REPOS')) return const Color(0xFF94A3B8); // Slate
+
+    // Fallback palette for variety
+    final List<Color> palette = [
+      const Color(0xFFF43F5E), // Rose
+      const Color(0xFF14B8A6), // Teal
+      const Color(0xFFD946EF), // Fuchsia
+      const Color(0xFFF97316), // Orange
+      const Color(0xFF84CC16), // Lime
+      const Color(0xFF0EA5E9), // Sky
+    ];
+
+    final int hash = name.hashCode.abs();
+    return palette[hash % palette.length];
+  }
+
   Widget _buildTimetableItem(TimetableItem item) {
-    final color = _getColorForSubject(item.subject?.code ?? '');
+    final color = _getColorForSubject(item.subject?.code ?? '', item.subject?.name ?? '');
     final startTime = _formatTime(item.startTime);
     final endTime = _formatTime(item.endTime);
     final badgeText = item.subject?.code ?? 'COURS';
@@ -289,6 +309,13 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Container(
         decoration: BoxDecoration(
@@ -304,7 +331,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             SizedBox(width: 12.w),
             // Left: Time
             SizedBox(
-              width: 50.w,
+              width: 55.w,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -327,8 +354,8 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 ],
               ),
             ),
-            SizedBox(width: 3.w),
-            Container(width: 2.w, height: 45.h, color: Colors.grey.shade200),
+            SizedBox(width: 4.w),
+            Container(width: 1.5.w, height: 40.h, color: Colors.grey.shade100),
             SizedBox(width: 16.w),
             // Middle: Content
             Expanded(
@@ -339,7 +366,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
                     decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.1),
+                      color: color.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6.r),
                     ),
                     child: Text(
@@ -382,24 +409,10 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 ],
               ),
             ),
-
-            // Right: Arrow
-            //Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 24.sp),
           ],
         ),
       ),
     );
-  }
-
-  Color _getColorForSubject(String code) {
-    final colors = {
-      'MATH': const Color(0xFF3B82F6),
-      'PHILO': const Color(0xFF8B5CF6),
-      'FR': const Color(0xFFEC4899),
-      'ENG': const Color(0xFF06B6D4),
-      'PAUSE': const Color(0xFFF59E0B),
-    };
-    return colors[code] ?? const Color(0xFF6366F1);
   }
 
   String _getDayName(int weekday) {
@@ -429,4 +442,3 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     return '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 }
-

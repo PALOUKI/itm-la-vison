@@ -1,16 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vision/core/services/api_service.dart';
 import 'package:vision/data/repositories/bulletins_repository.dart';
 import 'package:vision/domain/models/bulletins.dart';
 import 'package:vision/domain/models/common_models.dart';
-
-/// Provider pour le repository des bulletins
-final bulletinsRepositoryProvider = Provider<BulletinsRepository>((ref) {
-  return BulletinsRepository(apiService: ApiService());
-});
-
-/// Alias pour corriger la typo utilisée dans certains fichiers
-final bullletinsRepositoryProvider = bulletinsRepositoryProvider;
 
 /// Provider pour récupérer tous les bulletins (utilisé dans le dashboard/détail enfant)
 final bulletinsProvider = FutureProvider<BulletinsResponse>((ref) async {
@@ -27,6 +18,7 @@ final periodsProvider = FutureProvider<List<Period>>((ref) async {
 
 /// Provider pour les examens d'une période donnée
 final examsProvider = FutureProvider.family<List<Exam>, int>((ref, periodId) async {
+  ref.keepAlive();
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getExams(periodId: periodId);
 });
@@ -81,6 +73,7 @@ class MiniBulletinParams {
 
 /// Provider pour le contenu HTML du mini-bulletin (compositions)
 final miniBulletinHtmlProvider = FutureProvider.family<String, MiniBulletinParams>((ref, params) async {
+  ref.keepAlive();
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getMiniBulletinHtml(
     studentUuid: params.studentUuid,

@@ -6,6 +6,9 @@ import 'package:vision/domain/models/child.dart';
 import 'package:vision/domain/models/grades.dart' as grades_models;
 import 'package:vision/domain/models/common_models.dart';
 import 'package:vision/presentation/viewmodels/grades_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
+import 'package:vision/presentation/viewmodels/bulletins_viewmodel.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class GradesScreen extends ConsumerStatefulWidget {
   final String childUuid;
@@ -54,7 +57,7 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
       ),
       body: gradesState.when(
         data: (grades) => _buildContent(context, grades),
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a))),
+        loading: () => const GradesLoadingView(),
         error: (err, stack) => Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -80,6 +83,12 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
 
     // Get average score
     final averageScore = _calculateAverage(grades.grades);
+
+    // Determine selected period object
+    Period? selectedPeriod;
+    if (periods.isNotEmpty && _selectedPeriodIndex < periods.length) {
+      selectedPeriod = periods[_selectedPeriodIndex];
+    }
 
     return SingleChildScrollView(
       child: Column(
@@ -109,7 +118,8 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
           SizedBox(height: 24.h),
 
           // Download button
-          _buildDownloadButton(),
+          if (selectedPeriod != null)
+            _buildDownloadButton(selectedPeriod, gradesByPeriod[selectedPeriod] ?? []),
 
           SizedBox(height: 20.h),
         ],
@@ -145,6 +155,17 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
   }
 
   Widget _buildHeaderSection() {
+    // Get initials for placeholder
+    String initials = '';
+    if (widget.child.fullName.isNotEmpty) {
+      final names = widget.child.fullName.trim().split(' ');
+      if (names.length >= 2) {
+        initials = '${names[0][0]}${names[names.length - 1][0]}';
+      } else if (names.isNotEmpty && names[0].isNotEmpty) {
+        initials = names[0][0];
+      }
+    }
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
       padding: EdgeInsets.all(16.w),
@@ -153,15 +174,32 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
       ),
       child: Row(
         children: [
-          // Profile image
-          CircleAvatar(
-            radius: 32.r,
-            backgroundImage: widget.child.displayPhoto != null && widget.child.displayPhoto!.isNotEmpty
-                ? NetworkImage('${AppConstants.storageBaseUrl}/${widget.child.displayPhoto}')
-                : null,
-            child: widget.child.displayPhoto == null || widget.child.displayPhoto!.isEmpty
-                ? Icon(Icons.person, size: 32.sp)
-                : null,
+          // Profile image with elegant fallback
+          Container(
+            width: 64.w,
+            height: 64.w,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFF1E3A8A).withOpacity(0.1),
+            ),
+            child: ClipOval(
+              child: widget.child.displayPhoto != null && widget.child.displayPhoto!.isNotEmpty
+                  ? Image.network(
+                      '${AppConstants.storageBaseUrl}/${widget.child.displayPhoto}',
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => _buildInitialsPlaceholder(initials),
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: const Color(0xFF1E3A8A).withOpacity(0.3),
+                          ),
+                        );
+                      },
+                    )
+                  : _buildInitialsPlaceholder(initials),
+            ),
           ),
           SizedBox(width: 12.w),
 
@@ -190,6 +228,19 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInitialsPlaceholder(String initials) {
+    return Center(
+      child: Text(
+        initials.toUpperCase(),
+        style: TextStyle(
+          color: const Color(0xFF1E3A8A),
+          fontWeight: FontWeight.bold,
+          fontSize: 24.sp,
+        ),
       ),
     );
   }
@@ -362,6 +413,7 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
 
   Widget _buildSubjectCard(grades_models.Grade grade) {
     final score = grade.isAbsent ? 'ABS' : grade.score.toStringAsFixed(2);
+    final color = _getGradeColor(grade.subject.code, grade.subject.name);
 
     return Container(
       margin: EdgeInsets.only(bottom: 12.h),
@@ -370,8 +422,15 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(12.r),
         border: Border(
-          left: BorderSide(color: const Color(0xFF1E3A8A), width: 4.w),
+          left: BorderSide(color: color, width: 4.w),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
@@ -385,7 +444,7 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
                   style: TextStyle(
                     fontSize: 14.sp,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: const Color(0xFF1E293B),
                   ),
                 ),
                 SizedBox(height: 4.h),
@@ -394,42 +453,31 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
                     Container(
                       padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
                       decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
+                        color: color.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(4.r),
                       ),
                       child: Text(
                         'Coeff: ${grade.subject.coefficient}',
                         style: TextStyle(
                           fontSize: 10.sp,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.bold,
+                          color: color,
                         ),
                       ),
                     ),
-                    SizedBox(width: 8.w),
-                    /*
-                    Text(
-                      'Classe: 12.2',
-                      style: TextStyle(
-                        fontSize: 10.sp,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-
-                     */
                   ],
                 ),
-                SizedBox(height: 8.h),
+                SizedBox(height: 10.h),
 
                 // Progress bar
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4.r),
                   child: LinearProgressIndicator(
                     value: grade.isAbsent ? 0 : grade.score / 20,
-                    minHeight: 4.h,
-                    backgroundColor: Colors.grey.shade300,
+                    minHeight: 5.h,
+                    backgroundColor: Colors.grey.shade100,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      grade.isAbsent ? Colors.grey : const Color(0xFF1E3A8A),
+                      grade.isAbsent ? Colors.grey : color,
                     ),
                   ),
                 ),
@@ -448,7 +496,7 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
                 style: TextStyle(
                   fontSize: 20.sp,
                   fontWeight: FontWeight.bold,
-                  color: grade.isAbsent ? Colors.grey : const Color(0xFF1E3A8A),
+                  color: grade.isAbsent ? Colors.grey : color,
                 ),
               ),
               SizedBox(height: 4.h),
@@ -463,21 +511,53 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
           ),
 
           SizedBox(width: 8.w),
-          //Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 24.sp),
         ],
       ),
     );
   }
 
-  Widget _buildDownloadButton() {
+  Color _getGradeColor(String code, String name) {
+    final String cleanCode = code.toUpperCase();
+    
+    // Identical palette as Timetable for consistency
+    if (cleanCode.contains('MATH')) return const Color(0xFF3B82F6); // Blue
+    if (cleanCode.contains('PC') || cleanCode.contains('PHYS')) return const Color(0xFFEF4444); // Red
+    if (cleanCode.contains('SVT') || cleanCode.contains('BIO')) return const Color(0xFF10B981); // Green
+    if (cleanCode.contains('HG') || cleanCode.contains('HIST') || cleanCode.contains('GEO')) return const Color(0xFFF59E0B); // Amber
+    if (cleanCode.contains('FR') || cleanCode.contains('LITT')) return const Color(0xFFEC4899); // Pink
+    if (cleanCode.contains('ANG') || cleanCode.contains('ENG')) return const Color(0xFF06B6D4); // Cyan
+    if (cleanCode.contains('PHIL')) return const Color(0xFF8B5CF6); // Purple
+    if (cleanCode.contains('EPS') || cleanCode.contains('SPORT')) return const Color(0xFF6366F1); // Indigo
+
+    // Fallback palette
+    final List<Color> palette = [
+      const Color(0xFFF43F5E), // Rose
+      const Color(0xFF14B8A6), // Teal
+      const Color(0xFFD946EF), // Fuchsia
+      const Color(0xFFF97316), // Orange
+      const Color(0xFF84CC16), // Lime
+      const Color(0xFF0EA5E9), // Sky
+    ];
+
+    final int hash = name.hashCode.abs();
+    return palette[hash % palette.length];
+  }
+
+  Widget _buildDownloadButton(Period period, List<grades_models.Grade> gradesInPeriod) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16.w),
       width: double.infinity,
       child: ElevatedButton.icon(
         onPressed: () {
-          // TODO: Download PDF
+          if (gradesInPeriod.isNotEmpty) {
+            _showMiniBulletinBottomSheet(context, gradesInPeriod.first.exam);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Aucune donnée d\'examen disponible pour cette période.')),
+            );
+          }
         },
-        icon: Icon(Icons.download_outlined, size: 18.sp),
+        icon: Icon(Icons.description_outlined, size: 18.sp),
         label: Text(
           'Voir le relevé de notes',
           style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
@@ -493,5 +573,183 @@ class _GradesScreenState extends ConsumerState<GradesScreen> {
       ),
     );
   }
+
+  void _showMiniBulletinBottomSheet(BuildContext context, Exam exam) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _GradesMiniBulletinSheet(
+          childUuid: widget.childUuid,
+          exam: exam,
+        );
+      },
+    );
+  }
 }
 
+class _GradesMiniBulletinSheet extends ConsumerWidget {
+  final String childUuid;
+  final Exam exam;
+
+  const _GradesMiniBulletinSheet({
+    required this.childUuid,
+    required this.exam,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final params = MiniBulletinParams(studentUuid: childUuid, examId: exam.id);
+    final miniBulletinState = ref.watch(miniBulletinHtmlProvider(params));
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.8,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20.r),
+              topRight: Radius.circular(20.r),
+            ),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.h),
+                child: Container(
+                  width: 40.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        exam.title,
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                          color: const Color(0xFF1E293B),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: miniBulletinState.when(
+                  data: (htmlContent) {
+                    return _GradesMiniBulletinWebView(htmlContent: htmlContent);
+                  },
+                  loading: () => const DocumentLoadingView(height: 220),
+                  error: (err, stack) => SingleChildScrollView(
+                    controller: scrollController,
+                    child: Padding(
+                      padding: EdgeInsets.all(16.w),
+                      child: _buildGradesRetryableErrorMessage(
+                        errorMessage: err.toString(),
+                        onRetry: () => ref.invalidate(miniBulletinHtmlProvider(params)),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GradesMiniBulletinWebView extends StatelessWidget {
+  final String htmlContent;
+
+  const _GradesMiniBulletinWebView({required this.htmlContent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.r),
+          child: WebViewWidget(
+            controller: WebViewController()
+              ..setJavaScriptMode(JavaScriptMode.unrestricted)
+              ..loadHtmlString(htmlContent),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Widget _buildGradesRetryableErrorMessage({
+  required String errorMessage,
+  required VoidCallback onRetry,
+}) {
+  String displayMessage = 'Une erreur s\'est produite';
+  IconData icon = Icons.error_outline;
+  Color iconColor = Colors.red;
+
+  if (errorMessage.contains('access not enabled') || errorMessage.contains('pas encore publiées')) {
+    displayMessage = 'Le relevé de notes n\'est pas encore disponible\n\nCe document sera accessible une fois publié par l\'établissement.';
+    icon = Icons.lock_clock_outlined;
+    iconColor = Colors.orange;
+  } else if (errorMessage.contains('Connection') || errorMessage.contains('Network')) {
+    displayMessage = 'Erreur de connexion\n\nVérifiez votre connexion Internet et réessayez.';
+    icon = Icons.wifi_off;
+    iconColor = Colors.red;
+  }
+
+  return Container(
+    padding: EdgeInsets.all(16.w),
+    decoration: BoxDecoration(
+      color: iconColor.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(12.r),
+      border: Border.all(color: iconColor.withOpacity(0.3)),
+    ),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 48.sp, color: iconColor),
+        SizedBox(height: 12.h),
+        Text(
+          displayMessage,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13.sp, color: Colors.grey.shade800, height: 1.5),
+        ),
+        SizedBox(height: 16.h),
+        TextButton(
+          onPressed: onRetry,
+          style: TextButton.styleFrom(
+            foregroundColor: iconColor,
+            side: BorderSide(color: iconColor),
+          ),
+          child: const Text('Réessayer'),
+        ),
+      ],
+    ),
+  );
+}

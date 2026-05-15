@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:vision/domain/models/child.dart';
 import 'package:vision/config/constants.dart';
+import 'package:vision/core/services/notification_service.dart';
+import 'package:vision/core/utils/image_utils.dart';
 
-class ChildCard extends StatelessWidget {
+class ChildCard extends ConsumerWidget {
   final Child child;
   final bool isSelected;
   final VoidCallback onTap;
@@ -15,8 +18,35 @@ class ChildCard extends StatelessWidget {
     required this.onTap,
   });
 
+  Widget _buildPlaceholder() {
+    // Get initials from fullName
+    String initials = '';
+    if (child.fullName.isNotEmpty) {
+      final names = child.fullName.trim().split(' ');
+      if (names.length >= 2) {
+        initials = '${names[0][0]}${names[names.length - 1][0]}';
+      } else if (names.isNotEmpty && names[0].isNotEmpty) {
+        initials = names[0][0];
+      }
+    }
+
+    return Center(
+      child: Text(
+        initials.toUpperCase(),
+        style: TextStyle(
+          color: const Color(0xFF1e3a8a),
+          fontWeight: FontWeight.bold,
+          fontSize: 20.sp,
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch notifications for this specific child
+    final notificationCount = ref.watch(childNotificationsCountProvider(child.id));
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -39,28 +69,76 @@ class ChildCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Photo Enfant
-            Container(
-              width: 60.w,
-              height: 60.w,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1e3a8a).withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16.r),
-                image: child.displayPhoto != null
-                    ? DecorationImage(
-                        image: NetworkImage(
-                            '${AppConstants.storageBaseUrl}/${child.displayPhoto}'),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: child.displayPhoto == null
-                  ? Icon(
-                      Icons.person,
-                      color: const Color(0xFF1e3a8a),
-                      size: 30.sp,
-                    )
-                  : null,
+            // Photo Enfant avec Badge Notification
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 60.w,
+                  height: 60.w,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1e3a8a).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(16.r),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16.r),
+                    child: ImageUtils.getImageUrl(child.displayPhoto) != null
+                        ? Image.network(
+                            ImageUtils.getImageUrl(child.displayPhoto)!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              debugPrint('Erreur chargement image élève: ${ImageUtils.getImageUrl(child.displayPhoto)}');
+                              return _buildPlaceholder();
+                            },
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: SizedBox(
+                                  width: 20.w,
+                                  height: 20.w,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    value: loadingProgress.expectedTotalBytes != null
+                                        ? loadingProgress.cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                    color: const Color(0xFF1e3a8a).withOpacity(0.3),
+                                  ),
+                                ),
+                              );
+                            },
+                          )
+                        : _buildPlaceholder(),
+                  ),
+                ),
+                // Badge Notification sur la photo
+                if (notificationCount > 0)
+                  Positioned(
+                    top: -5,
+                    right: -5,
+                    child: Container(
+                      padding: EdgeInsets.all(6.w),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEF4444),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      constraints: BoxConstraints(
+                        minWidth: 22.w,
+                        minHeight: 22.w,
+                      ),
+                      child: Text(
+                        notificationCount > 9 ? '9+' : notificationCount.toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.sp,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             SizedBox(width: 16.w),
             // Informations
@@ -126,4 +204,3 @@ class ChildCard extends StatelessWidget {
     );
   }
 }
-

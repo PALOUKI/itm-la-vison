@@ -1,6 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vision/core/services/local_storage_service.dart';
+import 'package:vision/presentation/views/help_screen.dart';
+import 'package:vision/presentation/views/legal_document_screen.dart';
 import 'package:vision/presentation/views/login_screen.dart';
+import 'package:vision/presentation/views/onboarding_screen.dart';
 import 'package:vision/presentation/views/profile_screen.dart';
 import 'package:vision/presentation/views/splash_screen.dart';
 import 'package:vision/presentation/views/child_detail_screen.dart';
@@ -14,39 +18,53 @@ import 'package:vision/presentation/views/grades_screen.dart';
 import 'package:vision/presentation/views/bulletins_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
+  late final GoRouter router;
 
-  return GoRouter(
+  router = GoRouter(
     initialLocation: '/splash',
     debugLogDiagnostics: true,
     redirect: (context, state) {
+      final authState = ref.read(authStateProvider);
+      final storage = ref.read(localStorageServiceProvider);
+      
       final isSplash = state.matchedLocation == '/splash';
+      final isOnboarding = state.matchedLocation == '/onboarding';
       final isLogin = state.matchedLocation == '/login';
+      final isPublicRoute = {
+        '/login',
+        '/onboarding',
+        '/help',
+        '/terms',
+        '/privacy',
+      }.contains(state.matchedLocation);
 
-      // 1. PHASE DE CHARGEMENT : 
-      // Si on est sur le splash screen et que ça charge, on y reste.
-      // Si on est ailleurs (ex: login) et que ça passe en loading, on ne force PAS le splash.
+      // 1. PHASE DE CHARGEMENT
       if (authState is AuthStateLoading) {
         return isSplash ? null : null;
       }
 
-      // 2. CAS AUTHENTIFIÉ
+      // 2. VÉRIFICATION ONBOARDING (Seulement si on vient du splash ou si on essaie d'y accéder)
+      final hasDoneOnboarding = storage.hasCompletedOnboarding();
+      if (!hasDoneOnboarding) {
+        if (isOnboarding) return null;
+        return '/onboarding';
+      }
+
+      // Si l'utilisateur a fini l'onboarding mais essaie d'y retourner
+      if (isOnboarding && hasDoneOnboarding) {
+        return authState.isAuthenticated ? '/home' : '/login';
+      }
+
+      // 3. CAS AUTHENTIFIÉ
       if (authState.isAuthenticated) {
-        // Rediriger vers home si on vient du splash ou du login
-        if (isSplash || isLogin) return '/home';
-        // Sinon, laisser l'utilisateur où il est
+        if (isSplash || isLogin || isOnboarding) return '/home';
         return null;
       }
 
-      // 3. CAS NON AUTHENTIFIÉ (Initial, Error)
-      // Si on est sur splash, on DOIT aller au login car le check est fini
+      // 4. CAS NON AUTHENTIFIÉ
       if (isSplash) return '/login';
+      if (!isPublicRoute) return '/login';
 
-      // Si on n'est pas authentifié et qu'on n'est pas sur login, on force login
-      // (Cela protège toutes les routes /home et sous-routes)
-      if (!isLogin) return '/login';
-
-      // Si on est sur login, on y reste
       return null;
     },
     routes: [
@@ -55,8 +73,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SplashScreen(),
       ),
       GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const OnboardingScreen(),
+      ),
+      GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/help',
+        builder: (context, state) => const HelpScreen(),
+      ),
+      GoRoute(
+        path: '/terms',
+        builder: (context, state) => LegalDocumentScreen.terms(),
+      ),
+      GoRoute(
+        path: '/privacy',
+        builder: (context, state) => LegalDocumentScreen.privacy(),
       ),
       GoRoute(
         path: '/home',
@@ -123,4 +157,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  ref.listen<AuthState>(authStateProvider, (_, __) {
+    router.refresh();
+  });
+
+  return router;
 });

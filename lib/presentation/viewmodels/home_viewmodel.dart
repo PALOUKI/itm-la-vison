@@ -6,16 +6,6 @@ import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
 import 'package:vision/data/repositories/dashboard_repository.dart';
 import 'package:vision/domain/models/dashboard_response.dart';
 
-final childrenRepositoryProvider = Provider<ChildrenRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return ChildrenRepository(apiService: apiService);
-});
-
-final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return DashboardRepository(apiService: apiService);
-});
-
 final homeStateProvider = NotifierProvider<HomeNotifier, HomeState>(
   () => HomeNotifier(),
 );
@@ -28,8 +18,15 @@ class HomeNotifier extends Notifier<HomeState> {
   HomeState build() {
     _childrenRepository = ref.watch(childrenRepositoryProvider);
     _dashboardRepository = ref.watch(dashboardRepositoryProvider);
-    // On peut lancer le fetch dès que le provider est écouté
-    Future.microtask(() => fetchChildrenAndDashboard());
+    
+    // On écoute l'état d'authentification pour réagir aux changements d'utilisateur
+    final authState = ref.watch(authStateProvider);
+    
+    if (authState.isAuthenticated) {
+      // On lance le fetch dès que l'utilisateur est authentifié
+      Future.microtask(() => fetchChildrenAndDashboard());
+    }
+    
     return const HomeState.loading();
   }
 

@@ -6,6 +6,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:vision/domain/models/child.dart';
 import 'package:vision/domain/models/common_models.dart';
 import 'package:vision/presentation/viewmodels/bulletins_viewmodel.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 
 class BulletinsScreen extends ConsumerStatefulWidget {
   final String childUuid;
@@ -55,8 +56,10 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
       body: periodsState.when(
         data: (periods) {
           if (periods.isEmpty) {
-            return Center(
-              child: Text('Aucune période disponible', style: TextStyle(fontSize: 14.sp)),
+            return const VisionStateView(
+              icon: Icons.date_range_outlined,
+              title: 'Aucune période disponible',
+              message: 'Les périodes scolaires apparaîtront ici dès leur mise à disposition par l’établissement.',
             );
           }
 
@@ -88,19 +91,14 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
             ),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a))),
-        error: (err, stack) => Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Erreur: $err', style: TextStyle(fontSize: 14.sp, color: Colors.red)),
-              SizedBox(height: 16.h),
-              TextButton(
-                onPressed: () => ref.refresh(periodsProvider),
-                child: const Text("Réessayer"),
-              )
-            ],
-          ),
+        loading: () => const BulletinsLoadingView(),
+        error: (err, stack) => VisionStateView(
+          icon: Icons.description_outlined,
+          title: 'Bulletins indisponibles',
+          message: err.toString(),
+          actionLabel: 'Réessayer',
+          onAction: () => ref.refresh(periodsProvider),
+          accentColor: const Color(0xFFDC2626),
         ),
       ),
     );
@@ -229,10 +227,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
       ),
     ).when(
       data: (htmlContent) => _buildWebViewContainer(htmlContent),
-      loading: () => Padding(
-        padding: EdgeInsets.symmetric(vertical: 50.h),
-        child: const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a))),
-      ),
+      loading: () => const DocumentLoadingView(height: 320),
       error: (err, stack) => Padding(
         padding: EdgeInsets.all(16.w),
         child: _buildErrorMessage(err.toString()),
@@ -250,10 +245,13 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
     return examsState.when(
       data: (exams) {
         if (exams.isEmpty) {
-          return Padding(
-            padding: EdgeInsets.all(12.w),
-            child: Center(
-              child: Text('Aucun examen pour cette période', style: TextStyle(fontSize: 14.sp)),
+          return const Padding(
+            padding: EdgeInsets.all(12),
+            child: VisionStateView(
+              icon: Icons.fact_check_outlined,
+              title: 'Aucun examen pour cette période',
+              message: 'Les compositions et examens publiés pour cette période apparaîtront ici.',
+              compact: true,
             ),
           );
         }
@@ -268,10 +266,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
           ),
         );
       },
-      loading: () => Padding(
-        padding: EdgeInsets.all(12.w),
-        child: const CircularProgressIndicator(color: Color(0xFF1e3a8a)),
-      ),
+      loading: () => const ExamListLoadingView(),
       error: (err, stack) => Padding(
         padding: EdgeInsets.all(16.w),
         child: _buildErrorMessage(err.toString()),
@@ -338,79 +333,9 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return Consumer(
-          builder: (context, ref, child) {
-            final miniBulletinState = ref.watch(
-              miniBulletinHtmlProvider(
-                MiniBulletinParams(studentUuid: widget.childUuid, examId: exam.id),
-              ),
-            );
-            
-            return DraggableScrollableSheet(
-              expand: false,
-              builder: (context, scrollController) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(20.r),
-                      topRight: Radius.circular(20.r),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      // Handle bar
-                      Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
-                        child: Container(
-                          width: 40.w,
-                          height: 4.h,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(2.r),
-                          ),
-                        ),
-                      ),
-                      // Title
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-                        child: Text(
-                          exam.title,
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF1E293B),
-                          ),
-                        ),
-                      ),
-                      // Content
-                      Expanded(
-                        child: miniBulletinState.when(
-                          data: (htmlContent) {
-                            
-                            return _buildWebViewContainer(htmlContent);
-                          },
-                          loading: () {
-                            
-                            return const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a)));
-                          },
-                          error: (err, stack) {
-                            
-                            return SingleChildScrollView(
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
-                                child: _buildErrorMessage(err.toString()),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
-            );
-          },
+        return _MiniBulletinSheet(
+          childUuid: widget.childUuid,
+          exam: exam,
         );
       },
     );
@@ -444,6 +369,145 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
   }
 
   Widget _buildErrorMessage(String errorMessage) {
+    return _buildRetryableErrorMessage(
+      errorMessage: errorMessage,
+      onRetry: () {
+        if (_selectedTab == 'bulletin') {
+          if (_selectedPeriod != null) {
+            ref.invalidate(
+              bulletinHtmlProvider(
+                BulletinParams(studentUuid: widget.childUuid, periodId: _selectedPeriod!.id),
+              ),
+            );
+          }
+        } else {
+          if (_selectedPeriod != null) {
+            ref.invalidate(examsProvider(_selectedPeriod!.id));
+          }
+        }
+      },
+    );
+  }
+}
+
+class _MiniBulletinSheet extends ConsumerWidget {
+  final String childUuid;
+  final Exam exam;
+
+  const _MiniBulletinSheet({
+    required this.childUuid,
+    required this.exam,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final params = MiniBulletinParams(studentUuid: childUuid, examId: exam.id);
+    final miniBulletinState = ref.watch(miniBulletinHtmlProvider(params));
+
+    return DraggableScrollableSheet(
+      expand: false,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: Radius.circular(20.r),
+              topRight: Radius.circular(20.r),
+            ),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: 12.h),
+                child: Container(
+                  width: 40.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                child: Text(
+                  exam.title,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF1E293B),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: miniBulletinState.when(
+                  data: (htmlContent) {
+                    return _MiniBulletinWebView(htmlContent: htmlContent);
+                  },
+                  loading: () {
+                    return const DocumentLoadingView(height: 220);
+                  },
+                  error: (err, stack) {
+                    return SingleChildScrollView(
+                      controller: scrollController,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 16.h),
+                        child: _buildRetryableErrorMessage(
+                          errorMessage: err.toString(),
+                          onRetry: () => ref.invalidate(miniBulletinHtmlProvider(params)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _MiniBulletinWebView extends StatelessWidget {
+  final String htmlContent;
+
+  const _MiniBulletinWebView({
+    required this.htmlContent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      child: Container(
+        height: 500.h,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12.r),
+          child: WebViewWidget(
+            controller: _createMiniBulletinWebViewController(htmlContent),
+          ),
+        ),
+      ),
+    );
+  }
+
+  WebViewController _createMiniBulletinWebViewController(String htmlContent) {
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadHtmlString(htmlContent);
+    return controller;
+  }
+}
+
+Widget _buildRetryableErrorMessage({
+  required String errorMessage,
+  required VoidCallback onRetry,
+}) {
     // Extract meaningful error message
     String displayMessage = 'Une erreur s\'est produite';
     IconData icon = Icons.error_outline;
@@ -491,19 +555,7 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
           ),
           SizedBox(height: 16.h),
           TextButton(
-            onPressed: () {
-              if (_selectedTab == 'bulletin') {
-                if (_selectedPeriod != null) {
-                  ref.refresh(
-                    bulletinHtmlProvider(
-                      BulletinParams(studentUuid: widget.childUuid, periodId: _selectedPeriod!.id),
-                    ),
-                  );
-                }
-              } else {
-                ref.refresh(periodsProvider);
-              }
-            },
+            onPressed: onRetry,
             style: TextButton.styleFrom(
               foregroundColor: iconColor,
               padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
@@ -517,6 +569,4 @@ class _BulletinsScreenState extends ConsumerState<BulletinsScreen> {
         ],
       ),
     );
-  }
 }
-

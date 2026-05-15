@@ -6,7 +6,10 @@ import 'package:go_router/go_router.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
 import 'package:vision/presentation/viewmodels/profile_viewmodel.dart';
 import 'package:vision/presentation/widgets/custom_app_bar.dart';
+import 'package:vision/presentation/widgets/shimmer_loaders.dart';
 import 'package:vision/config/constants.dart';
+import 'package:vision/core/services/notification_service.dart';
+import 'package:vision/core/utils/image_utils.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -16,13 +19,36 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  bool _pushEnabled = true;
   bool _emailEnabled = false;
   bool _securityEnabled = true;
+
+  Widget _buildAvatarPlaceholder(String fullName) {
+    String initials = '';
+    if (fullName.isNotEmpty) {
+      final names = fullName.trim().split(' ');
+      if (names.length >= 2) {
+        initials = '${names[0][0]}${names[names.length - 1][0]}';
+      } else if (names.isNotEmpty && names[0].isNotEmpty) {
+        initials = names[0][0];
+      }
+    }
+
+    return Center(
+      child: Text(
+        initials.toUpperCase(),
+        style: TextStyle(
+          color: const Color(0xFF1c3672),
+          fontWeight: FontWeight.bold,
+          fontSize: 24.sp,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(profileStateProvider);
+    final pushEnabled = ref.watch(notificationServiceProvider).isEnabled();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
@@ -31,57 +57,40 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         showBackButton: false,
         hasNotification: false,
       ),
-      body: _buildBody(profileState),
+      body: _buildBody(profileState, pushEnabled),
     );
   }
 
-  Widget _buildBody(ProfileState state) {
+  Widget _buildBody(ProfileState state, bool pushEnabled) {
     if (state.isLoading) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF1e3a8a)));
+      return const ProfileLoadingView();
     }
 
     if (state.isError) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(state.errorOrNull ?? 'Erreur lors du chargement du profil'),
-            SizedBox(height: 16.h),
-            ElevatedButton(
-              onPressed: () => ref.read(profileStateProvider.notifier).fetchProfile(),
-              child: const Text("Réessayer"),
-            ),
-            SizedBox(height: 16.h),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                await ref.read(authStateProvider.notifier).logout();
-                if (mounted && context.mounted) {
-                  context.go('/login');
-                }
-              },
-              child: const Text("Forcer la déconnexion", style: TextStyle(color: Colors.white)),
-            )
-          ],
-        ),
+      return VisionStateView(
+        icon: Icons.person_off_outlined,
+        title: 'Profil indisponible',
+        message: state.errorOrNull ?? 'Impossible de charger les informations du parent pour le moment.',
+        actionLabel: 'Réessayer',
+        onAction: () => ref.read(profileStateProvider.notifier).fetchProfile(),
+        accentColor: const Color(0xFFDC2626),
       );
     }
 
     final user = state.dataOrNull;
     if (user == null) {
-      return const Center(child: Text("Utilisateur introuvable."));
+      return const VisionStateView(
+        icon: Icons.person_search_outlined,
+        title: 'Utilisateur introuvable',
+        message: 'Les informations du compte parent ne sont pas encore disponibles.',
+      );
     }
 
-    // Extraction du nom de famille simulée si on a un user.name
-    // On extrait le dernier mot par exemple. Si c'est "KPADJA Kokoussè Nestor", le nom est "KPADJA".
-    // Ou bien on affiche simplement le nom complet trunqué
-    String displayName = "Utilisateur";
+    String displayName = user.name;
     if (user.name.isNotEmpty) {
       final nameParts = user.name.split(' ');
       if (nameParts.isNotEmpty && nameParts.last.isNotEmpty) {
         displayName = 'M. ${nameParts.last}';
-      } else {
-        displayName = user.name;
       }
     }
 
@@ -108,13 +117,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         ),
                         child: CircleAvatar(
                           radius: 40.r,
-                          backgroundColor: Colors.grey.shade300,
-                          backgroundImage: user.avatar != null
-                              ? NetworkImage('${AppConstants.storageBaseUrl}/${user.avatar}')
-                              : null,
-                          child: user.avatar == null
-                              ? Icon(Icons.person, size: 40.sp, color: Colors.grey.shade500)
-                              : null,
+                          backgroundColor: const Color(0xFF1c3672).withOpacity(0.1),
+                          child: ClipOval(
+                            child: ImageUtils.getImageUrl(user.avatar) != null
+                                ? Image.network(
+                                    ImageUtils.getImageUrl(user.avatar)!,
+                                    fit: BoxFit.cover,
+                                    width: 80.r,
+                                    height: 80.r,
+                                    errorBuilder: (context, error, stackTrace) => _buildAvatarPlaceholder(user.name),
+                                    loadingBuilder: (context, child, loadingProgress) {
+                                      if (loadingProgress == null) return child;
+                                      return Center(
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: const Color(0xFF1c3672).withOpacity(0.3),
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : _buildAvatarPlaceholder(user.name),
+                          ),
                         ),
                       ),
                       Positioned(
@@ -128,7 +151,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           ),
                           child: Icon(
                             Icons.check_circle,
-                            color: const Color(0xFF1c3672),
+                            color: const Color(0xFF10B981),
                             size: 20.sp,
                           ),
                         ),
@@ -181,7 +204,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
             SizedBox(height: 16.h),
 
-            // Notifications & alertes
+            // Notifications & alertes (Rendu fonctionnel)
             _buildSectionCard(
               title: 'Notifications & Alertes',
               icon: Icons.notifications_none_outlined,
@@ -190,8 +213,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   icon: Icons.phone_android,
                   title: "Notifications Push",
                   subtitle: "Alertes instantanées pour les notes, absences et messages.",
-                  value: _pushEnabled,
-                  onChanged: (v) => setState(() => _pushEnabled = v),
+                  value: pushEnabled,
+                  onChanged: (v) async {
+                    await ref.read(notificationServiceProvider).toggleNotifications(v);
+                    setState(() {});
+                  },
                 ),
                 _buildDivider(),
                 _buildToggleRow(
@@ -212,50 +238,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ],
             ),
 
-            SizedBox(height: 24.h),
-
-            // Changer de compte
-            /*
-            InkWell(
-              onTap: () {},
-              child: Container(
-                padding: EdgeInsets.all(16.w),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16.r),
-                  border: Border.all(color: Colors.grey.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(8.w),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.people_outline, size: 20.sp, color: Colors.black87),
-                    ),
-                    SizedBox(width: 12.w),
-
-                    Expanded(
-                      child: Text(
-                        "Changer de compte",
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, color: Colors.grey.shade400, size: 20.sp),
-                  ],
-                ),
-              ),
-            ),
-
-             */
-
-            SizedBox(height: 16.h),
+            SizedBox(height: 26.h),
 
             // Déconnexion
             InkWell(
@@ -289,11 +272,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
 
-            SizedBox(height: 32.h),
+            SizedBox(height: 26.h),
 
             // Footer
             Text(
-              "Version de l'application : 2.4.0\n© 2026 ITM LA VISION - Tous droits réservés",
+              "Version de l'application : 2.4.0\n© 2026 ITM LA VISION",
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 10.sp,
@@ -302,7 +285,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
 
-            SizedBox(height: 40.h),
+            SizedBox(height: 10.h),
           ],
         ),
       ),
@@ -319,13 +302,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
         border: Border.all(color: Colors.grey.shade200),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

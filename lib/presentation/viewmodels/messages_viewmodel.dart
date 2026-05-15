@@ -1,12 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:vision/data/repositories/messages_repository.dart';
+import 'package:vision/core/services/api_service.dart';
+import 'package:vision/data/repositories/messages_repository.dart' as repo;
 import 'package:vision/domain/models/message.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
-
-final messagesRepositoryProvider = Provider<MessagesRepository>((ref) {
-  final apiService = ref.watch(apiServiceProvider);
-  return MessagesRepository(apiService: apiService);
-});
 
 final messagesStateProvider = NotifierProvider<MessagesNotifier, MessagesState>(
   () => MessagesNotifier(),
@@ -15,27 +11,28 @@ final messagesStateProvider = NotifierProvider<MessagesNotifier, MessagesState>(
 // Provider pour la liste des professeurs d'un enfant
 final childTeachersProvider =
     FutureProvider.family<List<Teacher>, String>((ref, childUuid) async {
-  final repo = ref.watch(messagesRepositoryProvider);
-  return repo.getChildTeachers(childUuid);
+  final repository = ref.watch(repo.messagesRepositoryProvider);
+  return repository.getChildTeachers(childUuid);
 });
 
 class MessagesNotifier extends Notifier<MessagesState> {
-  late MessagesRepository _repository;
+  late final repo.MessagesRepository _repository;
 
   @override
   MessagesState build() {
-    _repository = ref.watch(messagesRepositoryProvider);
+    _repository = ref.watch(repo.messagesRepositoryProvider);
+    // Fetch initial data
     Future.microtask(() => fetchMessages());
-    return const MessagesState.loading();
+    return const MessagesStateLoading();
   }
 
   Future<void> fetchMessages() async {
-    state = const MessagesState.loading();
+    state = const MessagesStateLoading();
     try {
       final response = await _repository.getMessages();
-      state = MessagesState.data(response);
+      state = MessagesStateData(response);
     } catch (e) {
-      state = MessagesState.error(e.toString());
+      state = MessagesStateError(e.toString());
     }
   }
 
@@ -71,16 +68,12 @@ class MessagesNotifier extends Notifier<MessagesState> {
   }
 }
 
-sealed class MessagesState {
+abstract class MessagesState {
   const MessagesState();
-
-  const factory MessagesState.loading() = MessagesStateLoading;
-  const factory MessagesState.data(MessagingResponse response) = MessagesStateData;
-  const factory MessagesState.error(String message) = MessagesStateError;
-
+  
   bool get isLoading => this is MessagesStateLoading;
   bool get isError => this is MessagesStateError;
-  MessagesStateData? get dataOrNull => this is MessagesStateData ? this as MessagesStateData : null;
+  MessagingResponse? get responseOrNull => this is MessagesStateData ? (this as MessagesStateData).response : null;
   String? get errorOrNull => this is MessagesStateError ? (this as MessagesStateError).message : null;
 }
 

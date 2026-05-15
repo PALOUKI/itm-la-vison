@@ -1,6 +1,13 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vision/core/services/api_service.dart';
 import 'package:vision/domain/models/child.dart';
 import 'package:vision/domain/models/children_response.dart';
+import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
+
+final childrenRepositoryProvider = Provider<ChildrenRepository>((ref) {
+  final apiService = ref.watch(apiServiceProvider);
+  return ChildrenRepository(apiService: apiService);
+});
 
 class ChildrenRepository {
   final ApiService _apiService;
