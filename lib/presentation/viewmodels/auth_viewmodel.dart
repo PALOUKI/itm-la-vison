@@ -5,6 +5,7 @@ import 'package:vision/data/repositories/auth_repository.dart';
 import 'package:vision/domain/models/user.dart';
 
 // Auth State Provider using Notifier (Riverpod 3.x)
+// ABSOLUMENT PAS d'autoDispose ici pour garder la session active
 final authStateProvider = NotifierProvider<AuthNotifier, AuthState>(
   () => AuthNotifier(),
 );
@@ -45,6 +46,7 @@ class AuthNotifier extends Notifier<AuthState> {
       state = const AuthState.initial();
     }
   }
+
   Future<void> login(String email, String password) async {
     state = const AuthState.loading();
     try {
@@ -55,7 +57,7 @@ class AuthNotifier extends Notifier<AuthState> {
       state = AuthState.authenticated(response.user);
     } catch (e) {
       state = AuthState.error(e.toString());
-      rethrow; // Re-jeter l'erreur pour la capturer dans l'UI
+      rethrow;
     }
   }
 
@@ -63,18 +65,16 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       await _authRepository.logout();
       state = const AuthState.initial();
-      
-      // Force la réinitialisation de tous les providers dépendants pour éviter les fuites de données
-      ref.invalidateSelf();
+      // On ne fait PAS de ref.invalidateSelf() ici car cela pourrait 
+      // déclencher des rebuilds indésirables pendant la transition
     } catch (e) {
-      state =  AuthState.error(e.toString());
+      state = AuthState.error(e.toString());
     }
   }
 
   Future<void> initializeAuth() async {
     await _initialize();
   }
-
 
   Future<void> refreshToken() async {
     try {

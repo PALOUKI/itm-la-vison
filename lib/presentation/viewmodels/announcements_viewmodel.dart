@@ -9,6 +9,13 @@ final announcementsStateProvider =
   () => AnnouncementsNotifier(),
 );
 
+// Nouveau Provider auto-dispose pour forcer le rafraîchissement à chaque entrée
+final announcementsListProvider = FutureProvider.autoDispose<List<Announcement>>((ref) async {
+  final repository = ref.watch(announcementsRepositoryProvider);
+  final response = await repository.getParentAnnouncements();
+  return response.data;
+});
+
 // AnnouncementsNotifier
 class AnnouncementsNotifier extends Notifier<AnnouncementsState> {
   late AnnouncementsRepository _repository;

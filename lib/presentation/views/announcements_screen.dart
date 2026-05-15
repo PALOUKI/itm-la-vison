@@ -12,7 +12,8 @@ class AnnouncementsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AnnouncementsState announcementsState = ref.watch(announcementsStateProvider);
+    // Utilisation du nouveau Provider autoDispose pour garantir la fraîcheur des données
+    final announcementsAsync = ref.watch(announcementsListProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -21,15 +22,15 @@ class AnnouncementsScreen extends ConsumerWidget {
         showBackButton: false,
         hasNotification: false,
       ),
-      body: announcementsState.when(
-        data: (AnnouncementsStateLoaded state) => _buildList(context, ref, state.announcements),
+      body: announcementsAsync.when(
+        data: (announcements) => _buildList(context, ref, announcements),
         loading: () => const AnnouncementsLoadingView(),
-        error: (String err, stack) => VisionStateView(
+        error: (err, stack) => VisionStateView(
           icon: Icons.campaign_outlined,
           title: 'Erreur',
-          message: err,
+          message: err.toString(),
           actionLabel: 'Réessayer',
-          onAction: () => ref.read(announcementsStateProvider.notifier).fetchAnnouncements(),
+          onAction: () => ref.refresh(announcementsListProvider),
         ),
       ),
     );

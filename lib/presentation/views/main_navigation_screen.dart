@@ -17,12 +17,35 @@ class MainNavigationScreen extends ConsumerStatefulWidget {
 }
 
 class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
+  late final AppLifecycleListener _lifecycleListener;
+
   final List<Widget> _screens = [
     const HomeScreen(),
     const AnnouncementsScreen(),
     const NotificationsScreen(),
     const ProfileScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Rafraîchir les notifications à chaque changement d'état (entrée/sortie de veille, tiroir notifs, etc.)
+    _lifecycleListener = AppLifecycleListener(
+      onStateChange: (state) {
+        if (state == AppLifecycleState.resumed) {
+          debugPrint('Application active, synchronisation des notifications...');
+          ref.invalidate(unreadNotificationsCountProvider);
+          ref.invalidate(notificationsListProvider(1));
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

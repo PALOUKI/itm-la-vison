@@ -5,7 +5,7 @@ import 'package:vision/domain/models/attendance.dart';
 import 'package:vision/presentation/viewmodels/auth_viewmodel.dart';
 
 // Provider pour récupérer les absences d'un élève
-final attendanceProvider = FutureProvider.family<AttendanceResponse, String>((ref, studentUuid) async {
+final attendanceProvider = FutureProvider.autoDispose.family<AttendanceResponse, String>((ref, studentUuid) async {
   final repository = ref.watch(attendanceRepositoryProvider);
   return repository.getAttendances(studentUuid);
 });

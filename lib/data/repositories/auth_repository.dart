@@ -95,6 +95,12 @@ class AuthRepository {
         // Fetch fresh user data
         final User user = await _apiService.getMe();
         await _storageService.saveUser(user.toJson());
+        
+        // S'assurer que le token actuel est bien le dernier (cas de refresh dans getMe)
+        final currentToken = _apiService.getAuthToken();
+        if (currentToken != null && currentToken != token) {
+          await _storageService.saveToken(currentToken);
+        }
       } catch (e) {
         // Continue but with local user data
       }

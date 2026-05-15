@@ -40,7 +40,7 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // 1. PHASE DE CHARGEMENT
       if (authState is AuthStateLoading) {
-        return isSplash ? null : null;
+        return null; // On ne fait RIEN tant que l'auth n'est pas fixée
       }
 
       // 2. VÉRIFICATION ONBOARDING (Seulement si on vient du splash ou si on essaie d'y accéder)

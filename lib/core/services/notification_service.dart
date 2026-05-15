@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -16,48 +17,15 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
 // Instance globale pour le background handler
 final FlutterLocalNotificationsPlugin _bgLocalNotifications = FlutterLocalNotificationsPlugin();
 
-// Handler pour les messages en arrière-plan (doit être une fonction globale)
+// Handler pour les messages en arrière-plan
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // 1. Initialiser Firebase
   await Firebase.initializeApp();
-  
   debugPrint('--- [BACKGROUND] MESSAGE RECEIVED ---');
   
-  // 2. Préparer le contenu
-  final notification = message.notification;
-  final data = message.data;
-
-  // On essaie de trouver un titre et un corps dans les données si le bloc notification est vide
-  String title = notification?.title ?? data['title'] ?? data['subject'] ?? 'ITM LA VISION';
-  String body = notification?.body ?? data['body'] ?? data['message'] ?? 'Nouvelle mise à jour disponible.';
-
-  // 3. Configuration pour le background
-  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-    'high_importance_channel',
-    'Notifications Importantes',
-    importance: Importance.max,
-    priority: Priority.high,
-    icon: '@mipmap/launcher_icon',
-    playSound: true,
-    enableVibration: true,
-    showWhen: true,
-  );
-
-  const NotificationDetails platformDetails = NotificationDetails(
-    android: androidDetails,
-    iOS: DarwinNotificationDetails(presentAlert: true, presentBadge: true, presentSound: true),
-  );
-
-  // 4. Afficher avec un ID stable
-  final int id = (message.messageId ?? DateTime.now().toIso8601String()).hashCode.abs() % 100000;
-  await _bgLocalNotifications.show(
-    id: id,
-    title: title,
-    body: body,
-    notificationDetails: platformDetails,
-    payload: jsonEncode(data),
-  );
+  // Sur Android, si le payload contient un bloc 'notification', Firebase affiche la notif
+  // automatiquement si le channel ID dans le manifest est correct.
+  // Pour les messages 'data' uniquement, on pourrait ajouter une logique ici.
 }
 
 class NotificationService {
@@ -70,40 +38,43 @@ class NotificationService {
   Future<void> initialize() async {
     debugPrint('Initialisation du NotificationService...');
     
-    // Configurer le background handler
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
     final storage = _ref.read(localStorageServiceProvider);
     
-    // 1. Demander la permission
+    // 1. Demander la permission Firebase
     NotificationSettings settings = await _fcm.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
 
-    debugPrint('Permission notifications : ${settings.authorizationStatus}');
-
     if (settings.authorizationStatus == AuthorizationStatus.authorized || 
         settings.authorizationStatus == AuthorizationStatus.provisional) {
       
-      // 2. Configurer les notifications locales
+      // 2. Demander la permission Android 13+ pour les bannières locales
+      if (Platform.isAndroid) {
+        final androidImplementation = _localNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        await androidImplementation?.requestNotificationsPermission();
+      }
+
+      // 3. Configurer les notifications locales
       const AndroidInitializationSettings initializationSettingsAndroid =
-          AndroidInitializationSettings('@mipmap/launcher_icon');
+          AndroidInitializationSettings('@mipmap/launcher_icon'); 
       
       const InitializationSettings initializationSettings = InitializationSettings(
         android: initializationSettingsAndroid,
         iOS: DarwinInitializationSettings(),
       );
 
-      // Créer le canal Android
+      // Création du canal haute importance
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'high_importance_channel',
-        'Notifications Importantes',
-        description: 'Ce canal est utilisé pour les notifications scolaires cruciales.',
+        'vision_notifications_channel',
+        'Alertes Scolaires',
+        description: 'Notifications prioritaires pour le suivi des élèves.',
         importance: Importance.max,
         enableVibration: true,
-        playSound: true,
+        showBadge: true,
       );
 
       await _localNotifications
@@ -113,27 +84,38 @@ class NotificationService {
       await _localNotifications.initialize(
         settings: initializationSettings,
         onDidReceiveNotificationResponse: (NotificationResponse details) {
+          debugPrint('Clic sur notification locale détecté');
           _handleNotificationClick(null, payload: details.payload);
         },
       );
 
-      // 3. Écouter les messages
+      // 4. Écouteurs de messages
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationClick);
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('App ouverte via notification FCM');
+        _handleNotificationClick(message);
+      });
 
       RemoteMessage? initialMessage = await _fcm.getInitialMessage();
       if (initialMessage != null) {
+        debugPrint('App démarrée via notification FCM');
         _handleNotificationClick(initialMessage);
       }
 
-      // 4. Gérer le Token FCM (Seulement si l'utilisateur est activé dans ses réglages)
-      if (storage.isNotificationsEnabled()) {
-        String? token = await _fcm.getToken();
-        if (token != null) {
-          debugPrint('FCM Token synchronisé : $token');
-          await _sendTokenToBackend(token);
+      // 5. Synchronisation du Token
+      Future.delayed(const Duration(seconds: 5), () async {
+        if (storage.isNotificationsEnabled()) {
+          try {
+            String? token = await _fcm.getToken();
+            if (token != null) {
+              debugPrint('FCM Token synchronisé : $token');
+              await _sendTokenToBackend(token);
+            }
+          } catch (e) {
+            debugPrint('Erreur synchronisation FCM Token: $e');
+          }
         }
-      }
+      });
 
       _fcm.onTokenRefresh.listen((token) {
         if (storage.isNotificationsEnabled()) {
@@ -146,10 +128,7 @@ class NotificationService {
   void _handleForegroundMessage(RemoteMessage message) async {
     debugPrint('--- [FOREGROUND] MESSAGE RECEIVED ---');
     
-    if (!isEnabled()) {
-      debugPrint('Notifications désactivées dans les réglages, ignore le message.');
-      return;
-    }
+    if (!isEnabled()) return;
 
     RemoteNotification? notification = message.notification;
     Map<String, dynamic> data = message.data;
@@ -157,25 +136,23 @@ class NotificationService {
     String title = notification?.title ?? data['title'] ?? data['subject'] ?? 'ITM LA VISION';
     String body = notification?.body ?? data['body'] ?? data['message'] ?? 'Nouvelle information scolaire.';
 
-    final int id = (message.messageId ?? DateTime.now().toIso8601String()).hashCode.abs() % 100000;
-    
+    // On utilise un ID stable pour éviter les doublons
+    final int notificationId = (message.messageId ?? DateTime.now().toIso8601String()).hashCode.abs() % 100000;
+
     await _localNotifications.show(
-      id: id,
+      id: notificationId,
       title: title,
       body: body,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          'high_importance_channel',
-          'Notifications Importantes',
+          'vision_notifications_channel',
+          'Alertes Scolaires',
+          channelDescription: 'Notifications prioritaires pour le suivi des élèves.',
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           icon: '@mipmap/launcher_icon',
-          playSound: true,
-          enableVibration: true,
-          styleInformation: BigTextStyleInformation(
-            body,
-            contentTitle: title,
-          ),
+          ticker: 'ticker',
+          styleInformation: BigTextStyleInformation(body),
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true,
@@ -186,35 +163,33 @@ class NotificationService {
       payload: jsonEncode(data),
     );
     
-    // ATTENTION : On attend un peu que le serveur finisse d'écrire en DB
-    // avant de rafraîchir la liste, sinon on va fetch l'ancienne liste.
-    debugPrint('Attente avant rafraîchissement des données...');
-    await Future.delayed(const Duration(seconds: 2));
-    
-    debugPrint('Rafraîchissement des providers...');
+    // Rafraîchir les compteurs
     _ref.invalidate(unreadNotificationsCountProvider);
     _ref.invalidate(notificationsListProvider(1));
+  }
+
+  void _handleNotificationClick(RemoteMessage? message, {String? payload}) {
+    _ref.read(navigationProvider.notifier).goToTab(2);
   }
 
   Future<void> toggleNotifications(bool enable) async {
     final storage = _ref.read(localStorageServiceProvider);
     await storage.setNotificationsEnabled(enable);
-
     if (enable) {
       await initialize();
       
+      // Envoi d'une notification de test pour confirmer le bon fonctionnement
       await _localNotifications.show(
         id: 999,
         title: 'Notifications activées',
-        body: 'Vous recevrez désormais les alertes de suivi en temps réel concernant vos enfants.',
+        body: 'Vous recevrez désormais les alertes de suivi en temps réel.',
         notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
-            'high_importance_channel',
-            'Notifications Importantes',
+            'vision_notifications_channel',
+            'Alertes Scolaires',
             importance: Importance.max,
-            priority: Priority.high,
+            priority: Priority.max,
             icon: '@mipmap/launcher_icon',
-            playSound: true,
           ),
         ),
       );
@@ -224,10 +199,6 @@ class NotificationService {
   }
 
   bool isEnabled() => _ref.read(localStorageServiceProvider).isNotificationsEnabled();
-
-  void _handleNotificationClick(RemoteMessage? message, {String? payload}) {
-    _ref.read(navigationProvider.notifier).goToTab(2);
-  }
 
   Future<void> _sendTokenToBackend(String token) async {
     try {

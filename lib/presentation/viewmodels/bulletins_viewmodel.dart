@@ -4,21 +4,19 @@ import 'package:vision/domain/models/bulletins.dart';
 import 'package:vision/domain/models/common_models.dart';
 
 /// Provider pour récupérer tous les bulletins (utilisé dans le dashboard/détail enfant)
-final bulletinsProvider = FutureProvider<BulletinsResponse>((ref) async {
+final bulletinsProvider = FutureProvider.autoDispose<BulletinsResponse>((ref) async {
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getBulletins();
 });
 
 /// Provider pour les périodes (semestres/trimestres)
-final periodsProvider = FutureProvider<List<Period>>((ref) async {
-  ref.keepAlive();
+final periodsProvider = FutureProvider.autoDispose<List<Period>>((ref) async {
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getPeriods();
 });
 
 /// Provider pour les examens d'une période donnée
-final examsProvider = FutureProvider.family<List<Exam>, int>((ref, periodId) async {
-  ref.keepAlive();
+final examsProvider = FutureProvider.autoDispose.family<List<Exam>, int>((ref, periodId) async {
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getExams(periodId: periodId);
 });
@@ -43,8 +41,7 @@ class BulletinParams {
 }
 
 /// Provider pour le contenu HTML du bulletin général
-final bulletinHtmlProvider = FutureProvider.family<String, BulletinParams>((ref, params) async {
-  ref.keepAlive();
+final bulletinHtmlProvider = FutureProvider.autoDispose.family<String, BulletinParams>((ref, params) async {
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getBulletinHtml(
     studentUuid: params.studentUuid,
@@ -72,8 +69,7 @@ class MiniBulletinParams {
 }
 
 /// Provider pour le contenu HTML du mini-bulletin (compositions)
-final miniBulletinHtmlProvider = FutureProvider.family<String, MiniBulletinParams>((ref, params) async {
-  ref.keepAlive();
+final miniBulletinHtmlProvider = FutureProvider.autoDispose.family<String, MiniBulletinParams>((ref, params) async {
   final repository = ref.watch(bulletinsRepositoryProvider);
   return repository.getMiniBulletinHtml(
     studentUuid: params.studentUuid,

@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:vision/config/constants.dart';
 import 'package:vision/core/services/api_endpoints.dart';
+import 'package:vision/core/services/local_storage_service.dart';
 import 'package:vision/domain/models/child.dart';
 import 'package:vision/domain/models/children_response.dart' as children_response;
 import 'package:vision/domain/models/login_response.dart';
@@ -18,14 +19,15 @@ import 'package:vision/domain/models/user.dart';
 import 'package:vision/domain/models/common_models.dart';
 
 final apiServiceProvider = Provider<ApiService>((ref) {
-  return ApiService();
+  return ApiService(ref);
 });
 
 class ApiService {
+  final Ref _ref;
   late Dio _dio;
   String? _authToken;
 
-  ApiService() {
+  ApiService(this._ref) {
     _dio = Dio(
       BaseOptions(
         baseUrl: AppConstants.apiBaseUrl,
@@ -330,7 +332,13 @@ class ApiService {
       final response = await _dio.post(ApiEndpoints.refreshToken);
       if (response.statusCode == 200) {
         final token = response.data['data']['token'] as String;
+        
+        // 1. Mettre à jour en mémoire
         setAuthToken(token);
+        
+        // 2. Persister sur le disque pour les prochains redémarrages
+        await _ref.read(localStorageServiceProvider).saveToken(token);
+        
         return token;
       } else {
         throw Exception('Token refresh failed');
